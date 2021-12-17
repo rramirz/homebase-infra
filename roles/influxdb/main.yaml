@@ -1,0 +1,4 @@
+---
+- name: Set up telegraf config
+  copy: src=conf dest=/etc/telegraf/config
+  notify: restart telegraf
