@@ -1,0 +1,54 @@
+---
+- hosts: home_base
+  user: rramirez
+  become: true
+  become_user: root
+  tasks:
+    - name: Add an Apt signing key, uses whichever key is at the URL
+      ansible.builtin.apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Unhold kubeadm
+      ansible.builtin.dpkg_selections:
+        name: kubeadm
+        selection: install
+
+    - name: Unhold kubelet
+      ansible.builtin.dpkg_selections:
+        name: kubelet
+        selection: install
+
+    - name: Unhold kubectl
+      ansible.builtin.dpkg_selections:
+        name: kubectl
+        selection: install
+
+    - name: Install k8s binarys
+      become: true
+      apt:
+        name:
+          - kubelet=1.24.10-00
+          - kubeadm=1.24.10-00
+          - kubectl=1.24.10-00
+        state: present
+        update_cache: yes
+        allow_downgrade: true
+
+    - name: Hold kubelet
+      become: true
+      dpkg_selections:
+        name: kubelet
+        selection: hold
+
+    - name: Hold kubeadm
+      become: true
+      dpkg_selections:
+        name: kubeadm
+        selection: hold
+
+    - name: Hold kubectl
+      become: true
+      dpkg_selections:
+        name: kubectl
+        selection: hold

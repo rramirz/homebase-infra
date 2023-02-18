@@ -1,0 +1,108 @@
+- name: Set authorized key took from file
+  hosts: 192.168.1.53
+  user: rramirez
+  tasks:
+  - authorized_key:
+      user: rramirez
+      state: present
+      key: "{{ lookup('file', '/.ssh/id_rsa.pub') }}"
+
+  # - name: add rramirez to sudo
+  #   become: true
+  #   become_method: su
+  #   command: usermod -aG sudo rramirez
+  
+  - name: Disable Swap
+    become: true
+    become_method: sudo
+    replace:
+      path: /etc/fstab
+      regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+      replace: '# \1'
+
+  - name: Install dependencies
+    become: true
+    apt:
+      name:
+        - containerd
+        - curl
+        - gnupg2
+      state: latest
+      update_cache: no
+
+  - name: Configure prerequisites
+    become: true
+    shell:
+      cmd: |
+        cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+        overlay
+        br_netfilter
+        EOF
+        modprobe overlay
+        modprobe br_netfilter
+        cat <<EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+        net.bridge.bridge-nf-call-iptables = 1
+        net.ipv4.ip_forward = 1
+        net.bridge.bridge-nf-call-ip6tables = 1
+        EOF
+        sysctl --system
+        apt-get update
+        apt-get -y install containerd
+        sudo mkdir -p /etc/containerd
+        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add
+        cat <<EOF | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        deb https://apt.kubernetes.io/ kubernetes-xenial main
+        EOF
+
+  - name: Set the configuration file for containerd
+    become: true 
+    copy:
+      src: configs/containerd-config.toml
+      dest: /etc/containerd/config.toml
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Install k8s binarys
+    become: true
+    apt:
+      name:
+        - kubelet=1.23.10-00
+        - kubeadm=1.23.10-00
+        - kubectl=1.23.10-00
+      state: present
+      update_cache: yes
+
+  - name: Hold kubelet
+    become: true
+    dpkg_selections:
+      name: kubelet
+      selection: hold
+
+  - name: Hold kubeadm
+    become: true
+    dpkg_selections:
+      name: kubeadm
+      selection: hold
+
+  - name: Hold kubectl
+    become: true
+    dpkg_selections:
+      name: kubectl
+      selection: hold
+
+  - name: Restart containerd
+    become: true
+    systemd:
+      name: containerd
+      state: restarted
+
+  - name: start kubelet
+    become: true
+    systemd:
+      name: kubelet
+      state: restarted
+
+  - name: join k8s cluster
+    become: true
+    command: kubeadm join 192.168.1.50:6443 --token arrbao.0tw7p5ii9bf4grcc   --discovery-token-ca-cert-hash sha256:9f65d9d53fb9480eef1c4f4b27e12c550a5cbbb23258145bb133488e66abaa8e
