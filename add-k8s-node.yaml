@@ -1,12 +1,7 @@
 - name: Set authorized key took from file
-  hosts: 192.168.1.53
-  user: rramirez
+  hosts: 192.168.1.100
+  user: ubuntu
   tasks:
-  - authorized_key:
-      user: rramirez
-      state: present
-      key: "{{ lookup('file', '/.ssh/id_rsa.pub') }}"
-
   # - name: add rramirez to sudo
   #   become: true
   #   become_method: su
@@ -26,7 +21,7 @@
       name:
         - containerd
         - curl
-        - gnupg2
+        # - gnupg2
       state: latest
       update_cache: no
 
@@ -67,9 +62,9 @@
     become: true
     apt:
       name:
-        - kubelet=1.23.10-00
-        - kubeadm=1.23.10-00
-        - kubectl=1.23.10-00
+        - kubelet=1.27.1-00
+        - kubeadm=1.27.1-00
+        - kubectl=1.27.1-00
       state: present
       update_cache: yes
 
@@ -105,4 +100,4 @@
 
   - name: join k8s cluster
     become: true
-    command: kubeadm join 192.168.1.50:6443 --token arrbao.0tw7p5ii9bf4grcc   --discovery-token-ca-cert-hash sha256:9f65d9d53fb9480eef1c4f4b27e12c550a5cbbb23258145bb133488e66abaa8e
+    command: kubeadm join 192.168.1.50:6443 --token cpy05j.y6evuarkgrxpfcpc --discovery-token-ca-cert-hash sha256:9f65d9d53fb9480eef1c4f4b27e12c550a5cbbb23258145bb133488e66abaa8e

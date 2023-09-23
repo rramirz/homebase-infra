@@ -1,0 +1,26 @@
+- name: Set authorized key took from file
+  hosts: 192.168.1.53
+  user: rramirez
+  tasks:
+  - name: move script
+    become: true 
+    copy:
+      src: configs/swapoff.sh
+      dest: /root/swapoff.sh
+      owner: root
+      group: root
+      mode: 0755
+  - name: move script
+    become: true 
+    copy:
+      src: configs/swapoff.service
+      dest: /etc/systemd/system/swapoff.service
+      owner: root
+      group: root
+      mode: 0644
+  - name: stop swap service
+    become: true
+    systemd:
+      enabled: true
+      name: swapoff
+      state: restarted

@@ -1,0 +1,13 @@
+[Unit]
+
+Description=Disable swap
+
+After=default.target
+
+[Service]
+
+ExecStart=/root/swapoff.sh
+
+[Install]
+
+WantedBy=default.target

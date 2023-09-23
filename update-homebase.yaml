@@ -1,5 +1,6 @@
 ---
 - hosts: home_base
+  name: update-os
   user: rramirez
   become: true
   become_user: root
