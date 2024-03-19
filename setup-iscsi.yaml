@@ -1,0 +1,47 @@
+- name: Setup iSCSI Initiator on a Node
+  hosts: home_base
+  user: rramirez
+  become: yes
+  tasks:
+    - name: Install open-iscsi package
+      apt:
+        name: open-iscsi
+        state: present
+        update_cache: yes
+
+    - name: Start and enable open-iscsi service
+      systemd:
+        name: open-iscsi
+        state: started
+        enabled: yes
+
+    - name: Configure iSCSI Initiator Name (IQN)
+      lineinfile:
+        path: /etc/iscsi/initiatorname.iscsi
+        regexp: '^InitiatorName='
+        line: 'InitiatorName=mnt.chaoscarnival.cloud:k8s-storage'
+      notify: restart iscsi
+
+    - name: Discover target
+      shell: iscsiadm -m discovery -t st -p 192.168.1.216
+      register: discovery_result
+      failed_when: discovery_result.rc != 0 and "already exists" not in discovery_result.stderr
+      changed_when: "'New targets' in discovery_result.stdout"
+      vars:
+        TARGET_IP: "your_target_ip"
+
+    - name: Login to iSCSI target
+      shell: iscsiadm -m node -T mnt.chaoscarnival.cloud:k8s-storage -p 192.168.1.216 --login
+      register: login_result
+      failed_when: login_result.rc != 0 and "session exists" not in login_result.stderr
+      changed_when: True
+      vars:
+        TARGET_IP: "192.168.1.216"
+        TARGET_IQN: "mnt.chaoscarnival.cloud"
+    #
+  handlers:
+    - name: restart iscsi
+      systemd:
+        name: open-iscsi
+        state: restarted
+
