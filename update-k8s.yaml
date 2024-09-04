@@ -6,58 +6,76 @@
   tasks:
     - name: Add the Kubernetes GPG key
       ansible.builtin.apt_key:
-        url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
+        url: https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key
         state: present
         keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-
     - name: Overwrite the Kubernetes repository file with the desired content
       ansible.builtin.copy:
         dest: /etc/apt/sources.list.d/kubernetes.list
         content: |
-          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
+          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
         backup: yes
-
     - name: Update the apt package index
       ansible.builtin.apt:
         update_cache: yes
-
     - name: Unhold kubeadm
       ansible.builtin.dpkg_selections:
         name: kubeadm
         selection: install
-
     - name: Unhold kubelet
       ansible.builtin.dpkg_selections:
         name: kubelet
         selection: install
-
     - name: Unhold kubectl
       ansible.builtin.dpkg_selections:
         name: kubectl
         selection: install
-
-    - name: Install Kubernetes binaries (version 1.29)
+    - name: Install Kubernetes binaries
       ansible.builtin.apt:
         name:
-          - kubelet=1.29.8-1.1
-          - kubeadm=1.29.8-1.1
-          - kubectl=1.29.8-1.1
-        state: present
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: latest
         update_cache: yes
-        allow_downgrade: yes
-
     - name: Hold kubelet
       ansible.builtin.dpkg_selections:
         name: kubelet
         selection: hold
-
     - name: Hold kubeadm
       ansible.builtin.dpkg_selections:
         name: kubeadm
         selection: hold
-
     - name: Hold kubectl
       ansible.builtin.dpkg_selections:
         name: kubectl
         selection: hold
 
+- hosts: k8s-master
+  user: rramirez
+  become: true
+  become_user: root
+  tasks:
+    - name: Upgrade Kubernetes on master
+      command: kubeadm upgrade apply 1.30.3 -y
+      register: upgrade_output
+
+- hosts: k8s-nodes
+  user: rramirez
+  become: true
+  become_user: root
+  tasks:
+    - name: Upgrade Kubernetes on master
+      command: kubeadm upgrade node
+      register: upgrade_output
+
+- hosts: k8s-master,k8s-nodes
+  user: rramirez
+  become: true
+  become_user: root
+  tasks:
+    - name: Restart kubelet on all nodes
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+        enabled: yes
