@@ -1,13 +1,25 @@
 ---
-- hosts: pis
-  user: ubuntu
+- hosts: home_base
+  user: rramirez
   become: true
   become_user: root
   tasks:
-    - name: Add an Apt signing key, uses whichever key is at the URL
+    - name: Add the Kubernetes GPG key
       ansible.builtin.apt_key:
-        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        url: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key
         state: present
+        keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Overwrite the Kubernetes repository file with the desired content
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        content: |
+          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /
+        backup: yes
+
+    - name: Update the apt package index
+      ansible.builtin.apt:
+        update_cache: yes
 
     - name: Unhold kubeadm
       ansible.builtin.dpkg_selections:
@@ -24,31 +36,28 @@
         name: kubectl
         selection: install
 
-    - name: Install k8s binarys
-      become: true
-      apt:
+    - name: Install Kubernetes binaries (version 1.29)
+      ansible.builtin.apt:
         name:
-          - kubelet=1.27.1-00
-          - kubeadm=1.27.1-00
-          - kubectl=1.27.1-00
+          - kubelet=1.29.8-1.1
+          - kubeadm=1.29.8-1.1
+          - kubectl=1.29.8-1.1
         state: present
         update_cache: yes
-        allow_downgrade: true
+        allow_downgrade: yes
 
     - name: Hold kubelet
-      become: true
-      dpkg_selections:
+      ansible.builtin.dpkg_selections:
         name: kubelet
         selection: hold
 
     - name: Hold kubeadm
-      become: true
-      dpkg_selections:
+      ansible.builtin.dpkg_selections:
         name: kubeadm
         selection: hold
 
     - name: Hold kubectl
-      become: true
-      dpkg_selections:
+      ansible.builtin.dpkg_selections:
         name: kubectl
         selection: hold
+
