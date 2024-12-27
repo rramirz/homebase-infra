@@ -1,6 +1,6 @@
 - name: Set authorized key took from file
-  hosts: 192.168.1.100
-  user: ubuntu
+  hosts: bootstrap
+  user: rramirez
   tasks:
   # - name: add rramirez to sudo
   #   become: true
@@ -21,7 +21,7 @@
       name:
         - containerd
         - curl
-        # - gnupg2
+        - gnupg2
       state: latest
       update_cache: no
 
@@ -58,46 +58,12 @@
       group: root
       mode: 0644
 
-  - name: Install k8s binarys
-    become: true
-    apt:
-      name:
-        - kubelet=1.27.1-00
-        - kubeadm=1.27.1-00
-        - kubectl=1.27.1-00
-      state: present
-      update_cache: yes
-
-  - name: Hold kubelet
-    become: true
-    dpkg_selections:
-      name: kubelet
-      selection: hold
-
-  - name: Hold kubeadm
-    become: true
-    dpkg_selections:
-      name: kubeadm
-      selection: hold
-
-  - name: Hold kubectl
-    become: true
-    dpkg_selections:
-      name: kubectl
-      selection: hold
-
   - name: Restart containerd
     become: true
     systemd:
       name: containerd
       state: restarted
 
-  - name: start kubelet
-    become: true
-    systemd:
-      name: kubelet
-      state: restarted
-
-  - name: join k8s cluster
-    become: true
-    command: kubeadm join 192.168.1.50:6443 --token MY_TOKEN  --discovery-token-ca-cert-hash MY_HASH
+  # - name: join k8s cluster
+  #   become: true
+  #   command: kubeadm join 192.168.1.50:6443 --token MY_TOKEN  --discovery-token-ca-cert-hash MY_HASH
