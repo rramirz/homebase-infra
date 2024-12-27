@@ -1,5 +1,5 @@
 ---
-- hosts: home_base
+- hosts: bootstrap
   user: rramirez
   become: true
   become_user: root
@@ -51,31 +51,31 @@
         name: kubectl
         selection: hold
 
-- hosts: k8s-master
-  user: rramirez
-  become: true
-  become_user: root
-  tasks:
-    - name: Upgrade Kubernetes on master
-      command: kubeadm upgrade apply 1.30.3 -y
-      register: upgrade_output
-
-- hosts: k8s-nodes
-  user: rramirez
-  become: true
-  become_user: root
-  tasks:
-    - name: Upgrade Kubernetes on master
-      command: kubeadm upgrade node
-      register: upgrade_output
-
-- hosts: k8s-master,k8s-nodes
-  user: rramirez
-  become: true
-  become_user: root
-  tasks:
-    - name: Restart kubelet on all nodes
-      ansible.builtin.systemd:
-        name: kubelet
-        state: restarted
-        enabled: yes
+# - hosts: k8s-master
+#   user: rramirez
+#   become: true
+#   become_user: root
+#   tasks:
+#     - name: Upgrade Kubernetes on master
+#       command: kubeadm upgrade apply 1.30.3 -y
+#       register: upgrade_output
+#
+# - hosts: k8s-nodes
+#   user: rramirez
+#   become: true
+#   become_user: root
+#   tasks:
+#     - name: Upgrade Kubernetes on master
+#       command: kubeadm upgrade node
+#       register: upgrade_output
+#
+# - hosts: k8s-master,k8s-nodes
+#   user: rramirez
+#   become: true
+#   become_user: root
+#   tasks:
+#     - name: Restart kubelet on all nodes
+#       ansible.builtin.systemd:
+#         name: kubelet
+#         state: restarted
+#         enabled: yes

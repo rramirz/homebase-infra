@@ -1,5 +1,5 @@
 - name: Set authorized key took from file
-  hosts: 192.168.1.53
+  hosts: bootstrap
   user: rramirez
   tasks:
   - name: move script
