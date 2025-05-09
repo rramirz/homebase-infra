@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: nas
+subsets:
+- addresses:
+  - ip: 192.168.1.216
+  ports:
+  - name: nas
+    port: 443
