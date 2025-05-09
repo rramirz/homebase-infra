@@ -3,7 +3,25 @@
   become: true
   become_user: root
   tasks:
-  - name: Add an Apt signing key, uses whichever key is at the URL
-    ansible.builtin.apt_key:
-      url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+  - name: Update apt cache
+    apt:
+      update_cache: yes
+
+  - name: Install necessary packages for AMD GPU support and video acceleration
+    apt:
+      name:
+        - mesa-vulkan-drivers
+        - mesa-va-drivers
+        - vainfo
+        - radeontop
+        - ffmpeg  # Optional: to ensure VAAPI is supported in media handling
       state: present
+
+  - name: Verify VAAPI support
+    command: vainfo
+    register: vainfo_output
+    ignore_errors: yes
+
+  - name: Display VAAPI info
+    debug:
+      var: vainfo_output.stdout
