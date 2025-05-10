@@ -5,34 +5,10 @@
   gather_facts: false
   remote_user: rramirez
   vars:
-    k8s_major_minor: "v1.30"
-    apt_list_url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_major_minor }}/deb/dists/stable/main/binary-amd64/Packages"
+    k8s_major_minor: "v1.31"
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
   tasks:
-    - name: Fetch available kubeadm versions
-      shell: |
-        curl -s "{{ apt_list_url }}" | \
-        awk '/^Package: kubeadm/{p=1} p && /^Version:/{print $2; p=0}' | \
-        sort -Vr | uniq
-      register: available_versions
-      changed_when: false
-
-    - name: Show available kubeadm versions
-      debug:
-        msg: |
-          Available versions:
-          {{ available_versions.stdout_lines | join('\n') }}
-
-    - name: Prompt for Kubernetes version
-      pause:
-        prompt: "Enter the version to install (copy/paste from above, e.g., 1.30.3-1.1): "
-      register: user_input
-
-    - name: Save selected version to file
-      copy:
-        dest: /tmp/k8s_selected_version.txt
-        content: "{{ user_input.user_input }}"
-
     - name: Add Kubernetes GPG key
       apt_key:
         url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_major_minor }}/deb/Release.key"
@@ -50,15 +26,39 @@
       apt:
         update_cache: yes
 
+    - name: Fetch available kubeadm versions (run once)
+      run_once: true
+      delegate_to: "{{ inventory_hostname }}"
+      shell: |
+        apt-cache madison kubeadm | awk '{print $3}' | sort -Vr | uniq
+      register: available_versions
+      changed_when: false
+
+    - name: Show available kubeadm versions (run once)
+      run_once: true
+      debug:
+        var: available_versions.stdout_lines
+
+    - name: Prompt for Kubernetes version (run once)
+      run_once: true
+      pause:
+        prompt: "Enter the version to install (copy/paste from above, e.g., 1.30.3-1.1): "
+      register: user_input
+
+    - name: Set selected_version fact for all hosts (run once)
+      set_fact:
+        selected_version: "{{ user_input.user_input }}"
+      run_once: true
+
     - name: Unhold Kubernetes packages
       shell: apt-mark unhold kubeadm kubelet kubectl || true
 
     - name: Install selected Kubernetes version
       apt:
         name:
-          - "kubeadm={{ user_input.user_input }}"
-          - "kubelet={{ user_input.user_input }}"
-          - "kubectl={{ user_input.user_input }}"
+          - "kubeadm={{ selected_version }}"
+          - "kubelet={{ selected_version }}"
+          - "kubectl={{ selected_version }}"
         update_cache: yes
         state: present
 
@@ -70,7 +70,7 @@
   become: true
   remote_user: rramirez
   vars:
-    k8s_base_version: "{{ lookup('file', '/tmp/k8s_selected_version.txt').split('-')[0] }}"
+    k8s_base_version: "{{ hostvars[groups['home_base'] | first].selected_version.split('-')[0] }}"
   tasks:
     - name: Apply kubeadm upgrade on master
       command: kubeadm upgrade apply {{ k8s_base_version }} -y
