@@ -5,7 +5,7 @@
   gather_facts: false
   remote_user: rramirez
   vars:
-    k8s_major_minor: "v1.31"
+    k8s_major_minor: "v1.33"
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
   tasks:
