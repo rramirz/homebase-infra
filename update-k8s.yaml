@@ -1,11 +1,19 @@
 ---
+- name: Preemptively hold Kubernetes packages
+  hosts: home_base
+  become: true
+  remote_user: rramirez
+  tasks:
+    - name: Hold Kubernetes packages (preemptive)
+      shell: apt-mark hold kubeadm kubelet kubectl || true
+
 - name: Fetch and install selected Kubernetes version on all nodes
   hosts: home_base
   become: true
   gather_facts: false
   remote_user: rramirez
   vars:
-    k8s_major_minor: "v1.33"
+    k8s_major_minor: "v1.32"
     keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
   tasks:
