@@ -6,7 +6,7 @@ metadata:
   name: {{ .name }}
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/backend-protocol: {{ .backendProtocol | default "HTTPS" }}
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx

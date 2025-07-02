@@ -26,10 +26,11 @@ services:
 
   - name: wifi
     externalIP: 192.168.10.25
-    port: 443
+    port: 80
     hostname: wifi.theramirez.casa
 
   - name: central-sync
     externalIP: 192.168.1.78
     port: 443
     hostname: central-sync.theramirez.casa
+    backendProtocol: HTTP
