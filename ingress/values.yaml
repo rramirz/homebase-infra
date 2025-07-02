@@ -6,7 +6,7 @@ services:
 
   - name: homeflix
     externalIP: 192.168.1.218
-    port: 8096
+    port: 32400
     hostname: homeflix.theramirez.casa
 
   - name: proxmox-store
