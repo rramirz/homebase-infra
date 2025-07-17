@@ -33,4 +33,3 @@ services:
     externalIP: 192.168.1.78
     port: 443
     hostname: central-sync.theramirez.casa
-    backendProtocol: HTTP
