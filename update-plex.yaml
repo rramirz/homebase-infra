@@ -1,0 +1,25 @@
+---
+- name: Update Plex Media Server
+  hosts: plex
+  tasks:
+    - name: Download latest Plex .deb package
+      get_url:
+        url: "https://plex.tv/downloads/latest/5?channel=16&build=linux-x86_64&distro=debian"
+        dest: /tmp/plexmediaserver_latest.deb
+        mode: "0644"
+
+    - name: Install Plex .deb package
+      apt:
+        deb: /tmp/plexmediaserver_latest.deb
+      notify: restart plex
+
+    - name: Clean up .deb file
+      file:
+        path: /tmp/plexmediaserver_latest.deb
+        state: absent
+
+  handlers:
+    - name: restart plex
+      systemd:
+        name: plexmediaserver
+        state: restarted

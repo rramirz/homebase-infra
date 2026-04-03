@@ -1,25 +1,41 @@
 [home_base]
-192.168.1.135
-192.168.1.136
-192.168.1.137
-192.168.1.138
-192.168.1.139
-192.168.1.140
-192.168.1.141
+k8s-master   ansible_host=192.168.1.135
+k8s-node-1   ansible_host=192.168.1.136
+k8s-node-2   ansible_host=192.168.1.137
+k8s-node-3   ansible_host=192.168.1.138
+k8s-node-4   ansible_host=192.168.1.139
+k8s-node-5   ansible_host=192.168.1.140
+k8s-node-6   ansible_host=192.168.1.141
 
 [k8s_master]
-192.168.1.135
+k8s-master
 
 [k8s_nodes]
-192.168.1.136
-192.168.1.137
-192.168.1.138
-192.168.1.139
-192.168.1.140
-192.168.1.141
+k8s-node-1
+k8s-node-2
+k8s-node-3
+k8s-node-4
+k8s-node-5
+k8s-node-6
 
 [lxc]
-192.168.1.216
-192.168.1.28
-192.168.1.218
-192.168.1.225
+lxc-1   ansible_host=192.168.1.216
+lxc-2   ansible_host=192.168.1.28
+lxc-3   ansible_host=192.168.1.218
+lxc-4   ansible_host=192.168.1.225
+
+[gpu_nodes]
+# Add hosts with AMD GPUs here
+k8s-master
+k8s-node-1
+
+[plex]
+lxc-3   ansible_user=root
+
+# Add hosts here temporarily when bootstrapping new K8s nodes
+[bootstrap]
+
+# All servers — used by node-exporters, monitoring, etc.
+[servers:children]
+home_base
+lxc

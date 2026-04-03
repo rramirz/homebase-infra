@@ -1,0 +1,26 @@
+---
+- name: Ensure apt keyrings directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download Kubernetes GPG key
+  get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_major_minor }}/deb/Release.key"
+    dest: /tmp/kubernetes-release.key
+    mode: "0644"
+
+- name: Install Kubernetes GPG key
+  shell: gpg --dearmor -o {{ k8s_apt_keyring }} < /tmp/kubernetes-release.key
+  args:
+    creates: "{{ k8s_apt_keyring }}"
+
+- name: Add Kubernetes apt repository
+  copy:
+    dest: /etc/apt/sources.list.d/kubernetes.list
+    content: |
+      deb [signed-by={{ k8s_apt_keyring }}] https://pkgs.k8s.io/core:/stable:/{{ k8s_major_minor }}/deb/ /
+    owner: root
+    group: root
+    mode: "0644"

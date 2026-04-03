@@ -1,65 +1,57 @@
 ---
-- name: Preemptively hold Kubernetes packages
+- name: Hold Kubernetes packages before upgrade
   hosts: home_base
-  become: true
-  remote_user: rramirez
   tasks:
-    - name: Hold Kubernetes packages (preemptive)
-      shell: apt-mark hold kubeadm kubelet kubectl || true
+    - name: Hold Kubernetes packages (safety measure)
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubeadm
+        - kubelet
+        - kubectl
 
-- name: Fetch and install selected Kubernetes version on all nodes
+- name: Fetch and install selected Kubernetes version
   hosts: home_base
-  become: true
   gather_facts: false
-  remote_user: rramirez
-  vars:
-    k8s_major_minor: "v1.32"
-    keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-
   tasks:
-    - name: Add Kubernetes GPG key
-      apt_key:
-        url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_major_minor }}/deb/Release.key"
-        state: present
-        keyring: "{{ keyring }}"
-
-    - name: Set Kubernetes apt repository
-      copy:
-        dest: /etc/apt/sources.list.d/kubernetes.list
-        content: |
-          deb [signed-by={{ keyring }}] https://pkgs.k8s.io/core:/stable:/{{ k8s_major_minor }}/deb/ /
-        backup: yes
+    - name: Setup Kubernetes apt repository
+      include_tasks: tasks/k8s-apt-repo.yaml
 
     - name: Update apt cache
       apt:
-        update_cache: yes
+        update_cache: true
 
-    - name: Fetch available kubeadm versions (run once)
+    - name: Fetch available kubeadm versions
       run_once: true
-      delegate_to: "{{ inventory_hostname }}"
-      shell: |
-        apt-cache madison kubeadm | awk '{print $3}' | sort -Vr | uniq
+      shell: apt-cache madison kubeadm | awk '{print $3}' | sort -Vr | head -20
       register: available_versions
       changed_when: false
 
-    - name: Show available kubeadm versions (run once)
+    - name: Show available kubeadm versions
       run_once: true
       debug:
         var: available_versions.stdout_lines
 
-    - name: Prompt for Kubernetes version (run once)
+    - name: Prompt for Kubernetes version
       run_once: true
       pause:
-        prompt: "Enter the version to install (copy/paste from above, e.g., 1.30.3-1.1): "
+        prompt: "Enter the version to install (e.g., 1.34.0-1.1)"
       register: user_input
 
-    - name: Set selected_version fact for all hosts (run once)
+    - name: Set selected version for all hosts
       set_fact:
         selected_version: "{{ user_input.user_input }}"
       run_once: true
 
     - name: Unhold Kubernetes packages
-      shell: apt-mark unhold kubeadm kubelet kubectl || true
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: install
+      loop:
+        - kubeadm
+        - kubelet
+        - kubectl
 
     - name: Install selected Kubernetes version
       apt:
@@ -67,38 +59,38 @@
           - "kubeadm={{ selected_version }}"
           - "kubelet={{ selected_version }}"
           - "kubectl={{ selected_version }}"
-        update_cache: yes
         state: present
+        update_cache: true
 
-    - name: Hold Kubernetes packages
-      shell: apt-mark hold kubeadm kubelet kubectl
+    - name: Hold Kubernetes packages at new version
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubeadm
+        - kubelet
+        - kubectl
 
 - name: Upgrade Kubernetes master node
   hosts: k8s_master
-  become: true
-  remote_user: rramirez
-  vars:
-    k8s_base_version: "{{ hostvars[groups['home_base'] | first].selected_version.split('-')[0] }}"
   tasks:
     - name: Apply kubeadm upgrade on master
-      command: kubeadm upgrade apply {{ k8s_base_version }} -y
+      command: >
+        kubeadm upgrade apply
+        {{ hostvars[groups['home_base'] | first].selected_version.split('-')[0] }} -y
 
 - name: Upgrade Kubernetes worker nodes
   hosts: k8s_nodes
-  become: true
-  remote_user: rramirez
+  serial: 1
   tasks:
-    - name: Run kubeadm upgrade node
+    - name: Upgrade node configuration
       command: kubeadm upgrade node
 
 - name: Restart kubelet on all nodes
   hosts: k8s_master,k8s_nodes
-  become: true
-  remote_user: rramirez
   tasks:
-    - name: Restart kubelet
+    - name: Restart and enable kubelet
       systemd:
         name: kubelet
         state: restarted
-        enabled: yes
-
+        enabled: true

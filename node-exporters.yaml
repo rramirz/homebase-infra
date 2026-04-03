@@ -1,44 +1,34 @@
 ---
 - name: Install and configure Prometheus Node Exporter
   hosts: servers
-  user: rramirez
-  become: true
-
-  vars:
-    node_exporter_user: "node_exporter"
-    node_exporter_port: 9100
-
   tasks:
-    - name: Create node_exporter user
-      ansible.builtin.user:
+    - name: Create node_exporter system user
+      user:
         name: "{{ node_exporter_user }}"
-        shell: "/usr/sbin/nologin"
-        system: yes
+        shell: /usr/sbin/nologin
+        system: true
 
-    - name: Update apt package index
-      ansible.builtin.apt:
-        update_cache: yes
-
-    - name: Install Node Exporter using apt
-      ansible.builtin.apt:
+    - name: Install Node Exporter
+      apt:
         name: prometheus-node-exporter
         state: present
+        update_cache: true
 
-    - name: Ensure Node Exporter service is enabled and started
-      ansible.builtin.systemd:
+    - name: Configure Node Exporter listen address
+      lineinfile:
+        path: /etc/default/prometheus-node-exporter
+        regexp: '^ARGS='
+        line: 'ARGS="--web.listen-address=0.0.0.0:{{ node_exporter_port }}"'
+      notify: restart node exporter
+
+    - name: Enable and start Node Exporter
+      systemd:
         name: prometheus-node-exporter
-        enabled: yes
+        enabled: true
         state: started
 
-    - name: Configure Node Exporter to listen on all interfaces
-      ansible.builtin.lineinfile:
-        path: "/etc/default/prometheus-node-exporter"
-        regexp: "^ARGS=.+"
-        line: "ARGS=\"--web.listen-address=0.0.0.0:{{ node_exporter_port }}\""
-        create: yes
-
-    - name: Restart Node Exporter to apply changes
-      ansible.builtin.systemd:
+  handlers:
+    - name: restart node exporter
+      systemd:
         name: prometheus-node-exporter
         state: restarted
-

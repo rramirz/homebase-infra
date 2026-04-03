@@ -1,26 +1,33 @@
-- name: Set authorized key took from file
+---
+- name: Disable swap persistently via systemd service
   hosts: bootstrap
-  user: rramirez
   tasks:
-  - name: move script
-    become: true 
-    copy:
-      src: configs/swapoff.sh
-      dest: /root/swapoff.sh
-      owner: root
-      group: root
-      mode: 0755
-  - name: move script
-    become: true 
-    copy:
-      src: configs/swapoff.service
-      dest: /etc/systemd/system/swapoff.service
-      owner: root
-      group: root
-      mode: 0644
-  - name: stop swap service
-    become: true
-    systemd:
-      enabled: true
-      name: swapoff
-      state: restarted
+    - name: Deploy swapoff script
+      copy:
+        src: configs/swapoff.sh
+        dest: /root/swapoff.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Deploy swapoff systemd unit
+      copy:
+        src: configs/swapoff.service
+        dest: /etc/systemd/system/swapoff.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: restart swapoff
+
+    - name: Enable and start swapoff service
+      systemd:
+        name: swapoff
+        enabled: true
+        state: started
+
+  handlers:
+    - name: restart swapoff
+      systemd:
+        name: swapoff
+        daemon_reload: true
+        state: restarted

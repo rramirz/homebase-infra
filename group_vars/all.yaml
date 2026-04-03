@@ -1,0 +1,12 @@
+---
+# Kubernetes
+k8s_major_minor: "v1.34"
+k8s_apt_keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+# iSCSI storage
+iscsi_target_ip: 192.168.1.216
+iscsi_iqn: mnt.chaoscarnival.cloud:k8s-storage
+
+# Monitoring
+node_exporter_user: node_exporter
+node_exporter_port: 9100

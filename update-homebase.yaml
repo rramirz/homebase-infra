@@ -1,27 +1,25 @@
 ---
-- hosts: home_base
-  name: update-os
-  user: rramirez
-  become: true
-  become_user: root
+- name: Update OS packages on all homebase nodes
+  hosts: home_base
   tasks:
-    - name: Add an Apt signing key, uses whichever key is at the URL
-      ansible.builtin.apt_key:
-        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
-        state: present
+    - name: Setup Kubernetes apt repository
+      include_tasks: tasks/k8s-apt-repo.yaml
 
-    - name: Update apt repo and cache on all Debian/Ubuntu boxes
-      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+    - name: Update apt cache
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
 
-    - name: Upgrade all packages on servers
-      apt: upgrade=dist force_apt_get=yes
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
 
-    - name: Check if a reboot is needed on all servers
+    - name: Check if reboot is required
       stat:
         path: /var/run/reboot-required
       register: reboot_required_file
 
-    - name: Reboot the box if kernel updated
+    - name: Reboot if kernel was updated
       reboot:
         msg: "Reboot initiated by Ansible for kernel updates"
         connect_timeout: 5

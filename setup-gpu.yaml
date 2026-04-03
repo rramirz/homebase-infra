@@ -1,0 +1,32 @@
+---
+- name: Install AMD GPU drivers and video acceleration
+  hosts: gpu_nodes
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: true
+
+    - name: Install AMD GPU and VAAPI packages
+      apt:
+        name:
+          - mesa-vulkan-drivers
+          - mesa-va-drivers
+          - vainfo
+          - radeontop
+          - ffmpeg
+        state: present
+
+    - name: Verify VAAPI support
+      command: vainfo
+      register: vainfo_output
+      changed_when: false
+      failed_when: false
+
+    - name: Display VAAPI info
+      debug:
+        var: vainfo_output.stdout
+
+    - name: Warn if VAAPI is not available
+      debug:
+        msg: "WARNING: VAAPI is not available on this host. Check GPU drivers."
+      when: vainfo_output.rc != 0
