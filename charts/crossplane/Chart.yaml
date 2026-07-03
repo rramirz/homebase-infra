@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: "1.19.1"
+description: A Helm chart for Crossplane
+name: crossplane
+type: application
+version: 0.1.0
+dependencies:
+  - name: crossplane
+    repository: https://charts.crossplane.io/stable
+    version: 1.19.1

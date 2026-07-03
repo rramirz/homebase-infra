@@ -1,0 +1,55 @@
+---
+- name: Configure Backblaze NFS export for NAS backup
+  hosts: pve-1
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Verify Backblaze home-share path exists
+      ansible.builtin.stat:
+        path: /home-storage/home-cloud/home-share
+      register: backblaze_home_share
+
+    - name: Fail if Backblaze home-share path is missing
+      ansible.builtin.fail:
+        msg: /home-storage/home-cloud/home-share does not exist on pve-1
+      when: not backblaze_home_share.stat.exists
+
+    - name: Ensure exports include directory exists
+      ansible.builtin.file:
+        path: /etc/exports.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install Backblaze home-share NFS export
+      ansible.builtin.copy:
+        dest: /etc/exports.d/backblaze-home-storage.exports
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          /home-storage/home-cloud/home-share 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+      notify: Reload NFS exports
+
+    - name: Flush export reload before verification
+      ansible.builtin.meta: flush_handlers
+
+    - name: Show active Backblaze NFS export
+      ansible.builtin.command: exportfs -v
+      changed_when: false
+      register: exportfs_output
+      when: not ansible_check_mode
+
+    - name: Verify Backblaze home-share export is active
+      ansible.builtin.assert:
+        that:
+          - exportfs_output.stdout is search('/home-storage/home-cloud/home-share')
+          - exportfs_output.stdout is search('192.168.1.0/24')
+        fail_msg: Backblaze home-share export was not found in exportfs output
+      when: not ansible_check_mode
+
+  handlers:
+    - name: Reload NFS exports
+      ansible.builtin.command: exportfs -ra
+      changed_when: true

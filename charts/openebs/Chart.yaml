@@ -1,0 +1,9 @@
+apiVersion: v2
+description: A Helm chart for Kubernetes
+name: openebs
+type: application
+version: 4.0.1
+dependencies:
+  - name: openebs
+    repository: https://openebs.github.io/openebs
+    version: 4.0.1

@@ -1,0 +1,49 @@
+# All overrides must be nested under `cluster:` because the upstream
+# CNPG chart is a subchart dependency literally named `cluster`.
+cluster:
+  fullnameOverride: home-db
+
+  type: postgresql
+
+  version:
+    postgresql: "17"
+
+  mode: standalone
+
+  cluster:
+    instances: 1
+
+    # PDB blocks node drains when only one replica exists.
+    enablePDB: false
+
+    enableSuperuserAccess: true
+
+    storage:
+      size: 30Gi
+      storageClass: nvme
+
+    imageName: ghcr.io/tensorchord/cloudnative-vectorchord:17-1.1.1
+
+    affinity:
+      topologyKey: ""
+
+    monitoring:
+      enabled: false
+
+    postgresql:
+      shared_preload_libraries:
+        - vchord.so
+
+    initdb: {}
+
+  backups:
+    enabled: false
+
+crossplane:
+  providerConfig:
+    enabled: true
+    name: home-db
+    superuserSecret: home-db-superuser
+    endpointHost: home-db-rw
+    defaultDatabase: postgres
+    sslMode: disable

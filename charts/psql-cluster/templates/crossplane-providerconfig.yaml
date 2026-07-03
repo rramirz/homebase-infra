@@ -1,0 +1,42 @@
+{{- $cfg := .Values.crossplane.providerConfig | default dict -}}
+{{- if $cfg.enabled -}}
+{{- $superuserSecret := lookup "v1" "Secret" .Release.Namespace $cfg.superuserSecret -}}
+{{- if $superuserSecret -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $cfg.name }}-crossplane-creds
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: cloudnative-pg
+type: Opaque
+data:
+  endpoint: {{ printf "%s.%s" $cfg.endpointHost .Release.Namespace | b64enc }}
+  port: {{ $cfg.port | default 5432 | toString | b64enc }}
+  database: {{ $cfg.defaultDatabase | b64enc }}
+  username: {{ index $superuserSecret.data "username" }}
+  password: {{ index $superuserSecret.data "password" }}
+---
+apiVersion: postgresql.sql.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: {{ $cfg.name }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/part-of: cloudnative-pg
+spec:
+  credentials:
+    connectionSecretRef:
+      name: {{ $cfg.name }}-crossplane-creds
+      namespace: {{ .Release.Namespace }}
+    source: PostgreSQLConnectionSecret
+  defaultDatabase: {{ $cfg.defaultDatabase }}
+  sslMode: {{ $cfg.sslMode }}
+{{- else -}}
+{{- /* CNPG-managed superuser secret not yet present. Re-run helm upgrade once
+       the cluster is Ready so .lookup can find the credentials. */ -}}
+{{- end -}}
+{{- end -}}

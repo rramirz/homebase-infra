@@ -1,0 +1,228 @@
+---
+- name: Install Backblaze Personal Backup Prometheus exporter in LXC 106
+  hosts: pve-1
+  become: true
+  gather_facts: false
+  vars:
+    backblaze_lxc_id: 106
+    backblaze_exporter_port: 9810
+    backblaze_config_path: /opt/backblaze-wine/config
+
+  tasks:
+    - name: Verify Backblaze LXC is running
+      ansible.builtin.command: "pct status {{ backblaze_lxc_id }}"
+      register: backblaze_lxc_status
+      changed_when: false
+      failed_when: "'status: running' not in backblaze_lxc_status.stdout"
+
+    - name: Ensure Python exists in Backblaze LXC
+      ansible.builtin.command: >-
+        pct exec {{ backblaze_lxc_id }} -- env DEBIAN_FRONTEND=noninteractive
+        sh -c 'apt-get update && apt-get install -y python3'
+      register: backblaze_python_install
+      changed_when: "'newly installed' in backblaze_python_install.stdout or 'Setting up' in backblaze_python_install.stdout"
+
+    - name: Stage Backblaze exporter script on pve-1
+      ansible.builtin.copy:
+        dest: /tmp/backblaze-exporter.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env python3
+          import os
+          import subprocess
+          import time
+          import xml.etree.ElementTree as ET
+          from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+          PORT = int(os.environ.get("BACKBLAZE_EXPORTER_PORT", "9810"))
+          CONFIG = os.environ.get("BACKBLAZE_CONFIG", "{{ backblaze_config_path }}")
+          REPORTS = os.path.join(CONFIG, "wine", "drive_c", "ProgramData", "Backblaze", "bzdata", "bzreports")
+
+          def esc(value):
+              return str(value).replace('\\', '\\\\').replace('"', '\\"').replace('\n', ' ')
+
+          def metric(name, value, labels=None, help_text=None, metric_type="gauge"):
+              lines = []
+              if help_text:
+                  lines.append(f"# HELP {name} {help_text}")
+                  lines.append(f"# TYPE {name} {metric_type}")
+              label_text = ""
+              if labels:
+                  label_text = "{" + ",".join(f'{k}="{esc(v)}"' for k, v in labels.items()) + "}"
+              lines.append(f"{name}{label_text} {value}")
+              return "\n".join(lines)
+
+          def read_xml(path):
+              try:
+                  return ET.parse(path).getroot()
+              except Exception:
+                  return None
+
+          def service_active(name):
+              try:
+                  result = subprocess.run(["systemctl", "is-active", "--quiet", name], timeout=3)
+                  return 1 if result.returncode == 0 else 0
+              except Exception:
+                  return 0
+
+          def docker_running(name):
+              try:
+                  result = subprocess.run(["docker", "ps", "--filter", f"name={name}", "--filter", "status=running", "--quiet"], capture_output=True, text=True, timeout=3)
+                  return 1 if result.returncode == 0 and result.stdout.strip() else 0
+              except Exception:
+                  return 0
+
+          def parse_mount_hex(hex_value):
+              try:
+                  return bytes.fromhex(hex_value).decode("utf-8", "ignore")
+              except Exception:
+                  return hex_value or "unknown"
+
+          def collect():
+              out = []
+              now = time.time()
+              out.append(metric("backblaze_exporter_build_info", 1, {"source": "bzreports", "config": CONFIG}, "Backblaze exporter info"))
+              out.append(metric("backblaze_service_active", service_active("backblaze-wine"), help_text="1 when backblaze-wine systemd unit is active"))
+              out.append(metric("backblaze_container_running", docker_running("backblaze-wine"), help_text="1 when Docker container backblaze-wine is running"))
+              out.append(metric("backblaze_reports_present", 1 if os.path.isdir(REPORTS) else 0, help_text="1 when Backblaze bzreports directory exists"))
+
+              if os.path.isdir(REPORTS):
+                  out.append(metric("backblaze_reports_mtime_seconds", os.path.getmtime(REPORTS), help_text="mtime of Backblaze bzreports directory"))
+
+              heartbeat = os.path.join(REPORTS, "bzserv_heartbeat.txt")
+              try:
+                  raw = open(heartbeat, "r", encoding="utf-8", errors="ignore").read().strip()
+                  if raw:
+                      out.append(metric("backblaze_bzserv_heartbeat_timestamp_seconds", int(raw) / 1000, help_text="Backblaze bzserv heartbeat timestamp"))
+              except Exception:
+                  pass
+
+              version_path = os.path.join(REPORTS, "bzserv_version.txt")
+              try:
+                  version = open(version_path, "r", encoding="utf-8", errors="ignore").read().strip()
+                  if version:
+                      out.append(metric("backblaze_client_version_info", 1, {"version": version}, "Backblaze client version"))
+              except Exception:
+                  pass
+
+              last = read_xml(os.path.join(REPORTS, "bzstat_lastbackupcompleted.xml"))
+              if last is not None:
+                  elem = last.find("lastbackupcompleted")
+                  if elem is not None and elem.get("gmt_millis"):
+                      ts = int(elem.get("gmt_millis")) / 1000
+                      out.append(metric("backblaze_last_backup_completed_timestamp_seconds", ts, help_text="Last completed backup timestamp"))
+                      out.append(metric("backblaze_last_backup_age_seconds", max(0, now - ts), help_text="Seconds since last completed backup"))
+
+              remaining = read_xml(os.path.join(REPORTS, "bzstat_remainingbackup.xml"))
+              if remaining is not None:
+                  elem = remaining.find("remaining")
+                  if elem is not None:
+                      out.append(metric("backblaze_remaining_files", elem.get("remainingnumfilesforbackup", "0"), help_text="Files remaining for backup"))
+                      out.append(metric("backblaze_remaining_bytes", elem.get("remainingnumbytesforbackup", "0"), help_text="Bytes remaining for backup"))
+
+              testimony = read_xml(os.path.join(REPORTS, "bzhost_testimony_x.xml"))
+              d_selected_files = 0
+              d_fixed = 0
+              d_selected = 0
+              z_selected = 0
+              volumes = {}
+              if testimony is not None:
+                  for mount in testimony.findall("./mountpoints/mountpoint"):
+                      name = mount.get("user_readable_name", "unknown")
+                      mtype = mount.get("type", "unknown")
+                      selected = 1 if mount.get("selected_for_backup") == "true" else 0
+                      out.append(metric("backblaze_mount_selected", selected, {"mount": name, "type": mtype}, "Backblaze mount selected state"))
+                      out.append(metric("backblaze_mount_total_bytes", mount.get("total_bytes", "0"), {"mount": name, "type": mtype}, "Mount total bytes"))
+                      out.append(metric("backblaze_mount_free_bytes", mount.get("free_bytes", "0"), {"mount": name, "type": mtype}, "Mount free bytes"))
+                      if name == "D:":
+                          d_fixed = 1 if mtype == "Fixed" else 0
+                          d_selected = selected
+                      if name == "Z:":
+                          z_selected = selected
+                  for vol in testimony.findall("./per_volume_testimony/bzvolume"):
+                      mount = parse_mount_hex(vol.get("mountPointNameHex", ""))
+                      selected = 1 if vol.get("vol_is_included_in_backup") == "true" else 0
+                      current = volumes.setdefault(mount, {"included": 0, "files": 0, "bytes": 0, "remaining_files": 0, "remaining_bytes": 0})
+                      current["included"] = max(current["included"], selected)
+                      current["files"] = max(current["files"], int(vol.get("pervol_sel_for_backup_numfiles", "0") or 0))
+                      current["bytes"] = max(current["bytes"], int(vol.get("pervol_sel_for_backup_numbytes", "0") or 0))
+                      current["remaining_files"] = max(current["remaining_files"], int(vol.get("pervol_remaining_files_numfiles", "0") or 0))
+                      current["remaining_bytes"] = max(current["remaining_bytes"], int(vol.get("pervol_remaining_files_numbytes", "0") or 0))
+                  for mount, values in volumes.items():
+                      out.append(metric("backblaze_volume_included", values["included"], {"mount": mount}, "Backblaze per-volume included state"))
+                      out.append(metric("backblaze_volume_selected_files", values["files"], {"mount": mount}, "Selected files per volume"))
+                      out.append(metric("backblaze_volume_selected_bytes", values["bytes"], {"mount": mount}, "Selected bytes per volume"))
+                      out.append(metric("backblaze_volume_remaining_files", values["remaining_files"], {"mount": mount}, "Remaining files per volume"))
+                      out.append(metric("backblaze_volume_remaining_bytes", values["remaining_bytes"], {"mount": mount}, "Remaining bytes per volume"))
+                  if "D:\\" in volumes:
+                      d_selected_files = volumes["D:\\"]["files"]
+              out.append(metric("backblaze_d_drive_fixed", d_fixed, help_text="1 when D: is Fixed, not Network"))
+              out.append(metric("backblaze_d_drive_selected", d_selected, help_text="1 when D: is selected for backup"))
+              out.append(metric("backblaze_d_drive_selected_files", d_selected_files, help_text="Selected file count for D:"))
+              out.append(metric("backblaze_z_drive_selected", z_selected, help_text="1 when Z: is selected; should be 0"))
+              return "\n".join(out) + "\n"
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path not in ("/", "/metrics"):
+                      self.send_response(404)
+                      self.end_headers()
+                      return
+                  body = collect().encode()
+                  self.send_response(200)
+                  self.send_header("Content-Type", "text/plain; version=0.0.4")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def log_message(self, fmt, *args):
+                  return
+
+          if __name__ == "__main__":
+              ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+
+    - name: Push Backblaze exporter script into LXC
+      ansible.builtin.command: "pct push {{ backblaze_lxc_id }} /tmp/backblaze-exporter.py /usr/local/bin/backblaze-exporter.py -perms 0755"
+      changed_when: false
+
+    - name: Stage Backblaze exporter systemd unit on pve-1
+      ansible.builtin.copy:
+        dest: /tmp/backblaze-exporter.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Backblaze Personal Backup Prometheus exporter
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          Environment=BACKBLAZE_EXPORTER_PORT={{ backblaze_exporter_port }}
+          Environment=BACKBLAZE_CONFIG={{ backblaze_config_path }}
+          ExecStart=/usr/bin/python3 /usr/local/bin/backblaze-exporter.py
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Push Backblaze exporter systemd unit into LXC
+      ansible.builtin.command: "pct push {{ backblaze_lxc_id }} /tmp/backblaze-exporter.service /etc/systemd/system/backblaze-exporter.service -perms 0644"
+      changed_when: false
+
+    - name: Enable and start Backblaze exporter
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- systemctl enable --now backblaze-exporter"
+      changed_when: true
+
+    - name: Verify Backblaze exporter endpoint
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- curl -fsS http://127.0.0.1:{{ backblaze_exporter_port }}/metrics"
+      changed_when: false
+      register: exporter_metrics
+
+    - name: Show key Backblaze metrics
+      ansible.builtin.debug:
+        msg: "{{ exporter_metrics.stdout_lines | select('match', 'backblaze_(service_active|container_running|d_drive_fixed|d_drive_selected|d_drive_selected_files|z_drive_selected).*') | list }}"

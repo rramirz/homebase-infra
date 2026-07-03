@@ -1,0 +1,11 @@
+apiVersion: v2
+appVersion: 0.1.0
+description: A Helm chart for Kubernetes
+name: heimdall
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: heimdall
+    repository: https://k8s-at-home.com/charts/
+    version: 8.1.0

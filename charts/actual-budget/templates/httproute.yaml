@@ -1,0 +1,54 @@
+{{- if .Values.httpRoute.enabled -}}
+{{- if .Values.authentik.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "actual-budget.fullname" . }}-authentik-outpost
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "actual-budget.name" . }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+  hostnames:
+    {{- toYaml .Values.httpRoute.hostnames | nindent 4 }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ .Values.authentik.outpostPath | quote }}
+      backendRefs:
+        - name: {{ .Values.authentik.serviceName }}
+          namespace: {{ .Values.authentik.namespace }}
+          port: {{ .Values.authentik.servicePort }}
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "actual-budget.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "actual-budget.name" . }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+  hostnames:
+    {{- toYaml .Values.httpRoute.hostnames | nindent 4 }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Cross-Origin-Embedder-Policy
+                value: "require-corp"
+              - name: Cross-Origin-Opener-Policy
+                value: "same-origin"
+      backendRefs:
+        - name: {{ include "actual-budget.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

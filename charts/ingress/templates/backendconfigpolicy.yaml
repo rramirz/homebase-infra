@@ -1,0 +1,21 @@
+{{- range .Values.services }}
+{{- if .tls }}
+{{- if .tls.enabled }}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: BackendConfigPolicy
+metadata:
+  name: {{ .name }}
+spec:
+  targetRefs:
+    - group: gateway.kgateway.dev
+      kind: Backend
+      name: {{ .name }}
+  tls:
+    insecureSkipVerify: {{ .tls.insecureSkipVerify | default true }}
+    {{- if .tls.sni }}
+    sni: {{ .tls.sni }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

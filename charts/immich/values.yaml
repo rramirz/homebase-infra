@@ -1,0 +1,122 @@
+dbName: immich
+psqlClusterName: home-db
+dbEncoding: UTF8
+dbLcCType: C
+dbLcCollate: C
+
+library:
+  storageClassName: immich-library
+  size: 1Ti
+  nfs:
+    server: 192.168.1.216
+    path: /home-storage/home-cloud/home-share/Videos
+
+externalLibraries:
+  photos:
+    storageClassName: immich-external-photos
+    size: 1Ti
+    nfs:
+      server: 192.168.1.216
+      path: /home-storage/home-cloud/home-share/Photos
+
+immich:
+  controllers:
+    main:
+      containers:
+        main:
+          image:
+            tag: v2.7.5
+
+  immich:
+    metrics:
+      enabled: true
+    persistence:
+      library:
+        existingClaim: immich-library
+
+  valkey:
+    enabled: true
+    persistence:
+      data:
+        enabled: true
+        type: persistentVolumeClaim
+        size: 2Gi
+        accessMode: ReadWriteOnce
+
+  server:
+    persistence:
+      external-photos:
+        existingClaim: immich-external-photos
+        globalMounts:
+          - path: /external/Photos
+            readOnly: true
+    route:
+      main:
+        enabled: true
+        kind: HTTPRoute
+        hostnames:
+          - immich.theramirez.casa
+        parentRefs:
+          - name: home
+            namespace: kgateway-system
+            sectionName: https
+        rules:
+          - backendRefs:
+              - identifier: main
+                port: http
+            matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+    controllers:
+      main:
+        pod:
+          nodeSelector:
+            kubernetes.io/hostname: home-base2
+        strategy: Recreate
+        containers:
+          main:
+            env:
+              DB_HOSTNAME:
+                valueFrom:
+                  secretKeyRef:
+                    name: home-db-db-immich
+                    key: endpoint
+              DB_PORT: "5432"
+              DB_USERNAME:
+                valueFrom:
+                  secretKeyRef:
+                    name: home-db-db-immich
+                    key: username
+              DB_PASSWORD:
+                valueFrom:
+                  secretKeyRef:
+                    name: home-db-db-immich
+                    key: password
+              DB_DATABASE_NAME: immich
+              DB_VECTOR_EXTENSION: vectorchord
+              TZ: America/New_York
+            resources:
+              requests:
+                cpu: 250m
+                memory: 1Gi
+              limits:
+                memory: 4Gi
+
+  machine-learning:
+    persistence:
+      cache:
+        enabled: true
+        type: persistentVolumeClaim
+        size: 10Gi
+        accessMode: ReadWriteOnce
+    controllers:
+      main:
+        containers:
+          main:
+            resources:
+              requests:
+                cpu: 250m
+                memory: 1Gi
+              limits:
+                memory: 4Gi

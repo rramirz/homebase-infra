@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "backblaze-wine.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "backblaze-wine.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.config.accessMode }}
+  {{- if .Values.config.storageClassName }}
+  storageClassName: {{ .Values.config.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.config.size }}

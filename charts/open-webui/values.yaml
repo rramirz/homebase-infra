@@ -1,0 +1,41 @@
+open-webui:
+  affinity: {}
+  annotations: {}
+  clusterDomain: cluster.local
+  extraEnvVars: []
+  image:
+    pullPolicy: Always
+    repository: ghcr.io/open-webui/open-webui
+    tag: ''
+  ingress:
+    annotations: {}
+    class: 'nginx'
+    enabled: true
+    host: 'ai.theramirez.casa'
+    tls: true
+  nameOverride: ''
+  nodeSelector: {}
+  ollama:
+    enabled: false
+  ollamaUrls: ["http://ollama.home-bot.svc.cluster.local:11434"]
+  persistence:
+    accessModes:
+    - ReadWriteOnce
+    annotations: {}
+    enabled: true
+    existingClaim: ''
+    selector: {}
+    size: 2Gi
+    storageClass: ''
+  podAnnotations: {}
+  replicaCount: 1
+  resources: {}
+  service:
+    annotations: {}
+    containerPort: 8080
+    labels: {}
+    loadBalancerClass: ''
+    nodePort: ''
+    port: 80
+    type: ClusterIP
+  tolerations: []

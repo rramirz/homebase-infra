@@ -1,0 +1,54 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: home
+  namespace: kgateway-system
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+spec:
+  gatewayClassName: kgateway
+  infrastructure:
+    parametersRef:
+      name: home-network
+      group: gateway.kgateway.dev
+      kind: GatewayParameters
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.theramirez.casa"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: theramirez-casa-wildcard-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-dipradar
+      protocol: HTTPS
+      port: 443
+      hostname: "dipradar.io"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: dipradar-io-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-dipradar-wildcard
+      protocol: HTTPS
+      port: 443
+      hostname: "*.dipradar.io"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: dipradar-io-wildcard-tls
+      allowedRoutes:
+        namespaces:
+          from: All

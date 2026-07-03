@@ -1,0 +1,76 @@
+app-template:
+  controllers:
+    main:
+      strategy: Recreate
+      containers:
+        main:
+          image:
+            repository: ghcr.io/seerr-team/seerr
+            tag: v3
+            pullPolicy: IfNotPresent
+          env:
+            TZ: America/New_York
+            PORT: "5055"
+            LOG_LEVEL: info
+          probes:
+            liveness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /api/v1/status
+                  port: 5055
+                initialDelaySeconds: 30
+                periodSeconds: 30
+                failureThreshold: 5
+            readiness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /api/v1/status
+                  port: 5055
+                initialDelaySeconds: 30
+                periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+
+  service:
+    main:
+      controller: main
+      ports:
+        http:
+          port: 5055
+
+  route:
+    main:
+      enabled: true
+      kind: HTTPRoute
+      hostnames:
+        - request.theramirez.casa
+      parentRefs:
+        - name: home
+          namespace: kgateway-system
+          sectionName: https
+      rules:
+        - backendRefs:
+            - identifier: main
+              port: http
+          matches:
+            - path:
+                type: PathPrefix
+                value: /
+
+  persistence:
+    config:
+      enabled: true
+      type: persistentVolumeClaim
+      accessMode: ReadWriteOnce
+      size: 5Gi
+      retain: true
+      globalMounts:
+        - path: /app/config

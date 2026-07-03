@@ -1,0 +1,51 @@
+replicaCount: 1
+
+image:
+  repository: actualbudget/actual-server
+  tag: "26.5.0-alpine"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: finance
+
+service:
+  type: ClusterIP
+  port: 80
+  containerPort: 5006
+
+persistence:
+  size: 5Gi
+
+httpRoute:
+  enabled: true
+  hostnames:
+    - budget.theramirez.casa
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+
+authentik:
+  enabled: true
+  namespace: authentik
+  serviceName: authentik-server
+  servicePort: 80
+  outpostPath: /outpost.goauthentik.io
+  authPathPrefix: /outpost.goauthentik.io/auth/envoy
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+timezone: America/New_York
+trustedProxies: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

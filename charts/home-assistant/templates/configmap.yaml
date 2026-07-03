@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-config
+  labels:
+    app: {{ include "home-assistant.name" . }}
+data:
+  configuration.yaml: |
+    homeassistant:
+      external_url: {{ .Values.configuration.external_url }}
+    http:
+      use_x_forwarded_for: true
+      trusted_proxies:
+        {{- range .Values.configuration.trusted_proxies }}
+        - {{ . }}
+        {{- end }}
+    default_config:
+    frontend:
+      themes: !include_dir_merge_named themes
+

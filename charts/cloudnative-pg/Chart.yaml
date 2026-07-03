@@ -1,0 +1,9 @@
+apiVersion: v2
+description: A Helm chart for Kubernetes
+name: cloudnative-pg
+type: application
+version: 0.28.0
+dependencies:
+  - name: cloudnative-pg
+    repository: https://cloudnative-pg.github.io/charts
+    version: 0.28.0

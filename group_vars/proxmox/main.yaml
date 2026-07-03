@@ -1,0 +1,12 @@
+---
+# Proxmox monitoring config (non-secret)
+#
+# Secret companion file: group_vars/proxmox/vault.yaml (gitignored).
+# Copy vault.example.yaml -> vault.yaml and fill in pve_api_token_secret.
+
+pve_api_user: monitoring@pve
+pve_api_token_id: prom
+pve_api_role: PVEAuditor
+pve_exporter_port: 9221
+pve_exporter_user: pve_exporter
+pve_exporter_config: /etc/prometheus/pve.yml

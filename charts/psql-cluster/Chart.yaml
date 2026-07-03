@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: 0.6.0
+description: A Helm chart for Kubernetes
+name: home-psql-cluster
+type: application
+version: 0.6.0
+dependencies:
+  - name: cluster
+    repository: https://cloudnative-pg.github.io/charts
+    version: 0.6.0

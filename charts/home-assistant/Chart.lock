@@ -1,0 +1,6 @@
+dependencies:
+- name: home-assistant
+  repository: https://charts.truecharts.org
+  version: 19.0.18
+digest: sha256:6245d1f6f35058f649f4a8dfd3dc5735598a206eafdd8a6794a880b69860a160
+generated: "2023-05-17T08:46:51.671684903-04:00"

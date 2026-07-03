@@ -1,0 +1,110 @@
+---
+- name: Update Syncthing in Proxmox-managed sync LXC
+  hosts: proxmox_managed_lxc
+  gather_facts: false
+  become: false
+  vars:
+    syncthing_service: syncthing@syncthing.service
+    syncthing_backup_dir: /var/backups/syncthing
+    syncthing_min_free_kb: 1048576
+  tasks:
+    - name: Verify LXC is running
+      command: "pct status {{ lxc_id }}"
+      register: lxc_status
+      changed_when: false
+      failed_when: "'status: running' not in lxc_status.stdout"
+
+    - name: Repair interrupted package configuration if needed
+      command: "pct exec {{ lxc_id }} -- env DEBIAN_FRONTEND=noninteractive dpkg --configure -a"
+      changed_when: false
+
+    - name: Check root filesystem free space inside LXC
+      command: >-
+        pct exec {{ lxc_id }} -- sh -c
+        "df -Pk / | awk 'NR==2 {print $4}'"
+      register: syncthing_root_free
+      changed_when: false
+      failed_when: syncthing_root_free.stdout | int < syncthing_min_free_kb
+
+    - name: Read installed Syncthing version
+      command: >-
+        pct exec {{ lxc_id }} -- dpkg-query -W -f='${Version}' syncthing
+      register: syncthing_installed_version
+      changed_when: false
+
+    - name: Update package metadata inside LXC
+      command: "pct exec {{ lxc_id }} -- env DEBIAN_FRONTEND=noninteractive apt-get update"
+      changed_when: false
+
+    - name: Read candidate Syncthing version
+      command: >-
+        pct exec {{ lxc_id }} -- sh -c
+        "apt-cache policy syncthing | awk '/Candidate:/ {print $2}'"
+      register: syncthing_candidate_version
+      changed_when: false
+
+    - name: Locate Syncthing home directory
+      command: "pct exec {{ lxc_id }} -- sh -c \"getent passwd syncthing | cut -d: -f6\""
+      register: syncthing_home
+      changed_when: false
+      when: syncthing_candidate_version.stdout.strip() != syncthing_installed_version.stdout.strip()
+
+    - name: Create Syncthing backup directory
+      command: "pct exec {{ lxc_id }} -- mkdir -p {{ syncthing_backup_dir }}"
+      changed_when: false
+      when: syncthing_candidate_version.stdout.strip() != syncthing_installed_version.stdout.strip()
+
+    - name: Back up Syncthing config and database before upgrade
+      command: >-
+        pct exec {{ lxc_id }} -- sh -c
+        'backup="{{ syncthing_backup_dir }}/config-$(date +%Y%m%d-%H%M%S).tgz";
+        tar -C "{{ syncthing_home.stdout }}" -czf "$backup" .;
+        chmod 600 "$backup";
+        printf "%s\n" "$backup"'
+      register: syncthing_backup
+      changed_when: true
+      when: syncthing_candidate_version.stdout.strip() != syncthing_installed_version.stdout.strip()
+
+    - name: Upgrade Syncthing inside LXC
+      command: >-
+        pct exec {{ lxc_id }} -- env DEBIAN_FRONTEND=noninteractive
+        apt-get install -y --only-upgrade -o Dpkg::Options::=--force-confold syncthing
+      register: syncthing_upgrade
+      changed_when: syncthing_upgrade.stdout is regex('^[1-9][0-9]* upgraded,', multiline=True)
+      notify: restart syncthing in LXC
+
+    - name: Flush restart before verification
+      meta: flush_handlers
+
+    - name: Verify Syncthing service is active
+      command: "pct exec {{ lxc_id }} -- systemctl is-active {{ syncthing_service }}"
+      register: syncthing_active
+      changed_when: false
+      failed_when: syncthing_active.stdout.strip() != "active"
+      retries: 6
+      delay: 10
+      until: syncthing_active.stdout.strip() == "active"
+
+    - name: Verify Syncthing process is running as syncthing user
+      command: "pct exec {{ lxc_id }} -- pgrep -u syncthing -x syncthing"
+      register: syncthing_process
+      changed_when: false
+
+    - name: Verify Syncthing health endpoint
+      command: "pct exec {{ lxc_id }} -- curl -fsS http://127.0.0.1:8383/rest/noauth/health"
+      register: syncthing_health
+      changed_when: false
+      failed_when: "'OK' not in syncthing_health.stdout"
+
+    - name: Show Syncthing version
+      command: "pct exec {{ lxc_id }} -- syncthing --version"
+      register: syncthing_version
+      changed_when: false
+
+    - name: Report Syncthing version
+      debug:
+        msg: "{{ lxc_name }} Syncthing version: {{ syncthing_version.stdout }}"
+
+  handlers:
+    - name: restart syncthing in LXC
+      command: "pct exec {{ lxc_id }} -- systemctl try-restart {{ syncthing_service }}"

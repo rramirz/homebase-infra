@@ -1,0 +1,6 @@
+kgateway installs into {{ .Release.Namespace }}.
+
+MetalLB should allocate an address for the generated Gateway proxy service after the Gateway reconciles:
+
+  kubectl -n {{ .Release.Namespace }} get gateway {{ .Values.gateway.name }}
+  kubectl -n {{ .Release.Namespace }} get svc -l gateway.networking.k8s.io/gateway-name={{ .Values.gateway.name }}

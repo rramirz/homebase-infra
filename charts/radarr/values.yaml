@@ -1,0 +1,86 @@
+app-template:
+  controllers:
+    main:
+      strategy: Recreate
+      containers:
+        main:
+          image:
+            repository: lscr.io/linuxserver/radarr
+            tag: 6.1.1
+            pullPolicy: IfNotPresent
+          env:
+            TZ: America/New_York
+            # Match Plex/downloads unprivileged LXC host-mapped media ownership.
+            PUID: "100000"
+            PGID: "101001"
+            UMASK: "007"
+          probes:
+            liveness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /ping
+                  port: 7878
+                initialDelaySeconds: 30
+                periodSeconds: 30
+                failureThreshold: 5
+            readiness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /ping
+                  port: 7878
+                initialDelaySeconds: 30
+                periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+
+  service:
+    main:
+      controller: main
+      ports:
+        http:
+          port: 7878
+
+  route:
+    main:
+      enabled: true
+      kind: HTTPRoute
+      hostnames:
+        - radarr.theramirez.casa
+      parentRefs:
+        - name: home
+          namespace: kgateway-system
+          sectionName: https
+      rules:
+        - backendRefs:
+            - identifier: main
+              port: http
+          matches:
+            - path:
+                type: PathPrefix
+                value: /
+
+  persistence:
+    config:
+      enabled: true
+      type: persistentVolumeClaim
+      accessMode: ReadWriteOnce
+      size: 5Gi
+      retain: true
+      globalMounts:
+        - path: /config
+
+    media:
+      enabled: true
+      type: nfs
+      server: 192.168.1.216
+      path: /home-storage/home-cloud/home-share/Videos
+      globalMounts:
+        - path: /mnt/Videos

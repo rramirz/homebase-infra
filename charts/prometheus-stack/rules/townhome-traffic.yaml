@@ -1,0 +1,74 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: townhome-traffic
+  namespace: monitoring
+  labels:
+    release: prometheus-stack
+    app.kubernetes.io/part-of: prometheus-stack
+spec:
+  groups:
+    - name: townhome.traffic
+      rules:
+        - alert: TownhomeTunnelDown
+          expr: probe_success{job="blackbox-townhome", instance="https://townhome.theramirez.casa"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: townhome
+          annotations:
+            summary: "Townhome Cloudflare Tunnel endpoint is down"
+            description: "Blackbox probe for https://townhome.theramirez.casa has failed for 5m. This checks the public Cloudflare Tunnel path from the cluster vantage point."
+
+        - alert: TownhomeTunnelProbeMissing
+          expr: absent(probe_success{job="blackbox-townhome", instance="https://townhome.theramirez.casa"})
+          for: 15m
+          labels:
+            severity: warning
+            component: townhome
+          annotations:
+            summary: "Townhome tunnel probe is missing"
+            description: "Prometheus has no blackbox probe series for https://townhome.theramirez.casa. Check the blackbox-townhome scrape job."
+
+        - alert: TownhomeTrafficExporterMissing
+          expr: absent(townhome_http_response_count_total{host="townhome.theramirez.casa"})
+          for: 15m
+          labels:
+            severity: warning
+            component: townhome
+          annotations:
+            summary: "Townhome traffic exporter metrics are missing"
+            description: "No origin-side nginx log exporter metrics have been scraped for townhome.theramirez.casa for 15m. Check the townhome ServiceMonitor and nginx-log-exporter sidecar."
+
+        - alert: TownhomeHigh5xxRate
+          expr: >-
+            sum(rate(townhome_http_response_count_total{host="townhome.theramirez.casa",status=~"5.."}[15m]))
+            / clamp_min(sum(rate(townhome_http_response_count_total{host="townhome.theramirez.casa"}[15m])), 0.001) > 0.05
+          for: 15m
+          labels:
+            severity: warning
+            component: townhome
+          annotations:
+            summary: "Townhome 5xx rate is high"
+            description: "More than 5% of townhome.theramirez.casa origin responses are 5xx over 15m."
+
+        - alert: TownhomeLogParseErrors
+          expr: increase(townhome_parse_errors_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: townhome
+          annotations:
+            summary: "Townhome nginx log parse errors detected"
+            description: "nginx-log-exporter is failing to parse at least one townhome access log line. Check log format drift."
+
+        - alert: TownhomeTLSExpiringSoon
+          expr: probe_ssl_earliest_cert_expiry{job="blackbox-townhome", instance="https://townhome.theramirez.casa"} - time() < 1209600
+          for: 1h
+          labels:
+            severity: warning
+            component: townhome
+          annotations:
+            summary: "Townhome TLS certificate expires soon"
+            description: "Blackbox probe sees the public TLS certificate expiring in less than 14 days."

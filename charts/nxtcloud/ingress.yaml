@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/backend-protocol: "https"
+    # nginx.ingress.kubernetes.io/server-snippet: |
+    #   location /.well-known/carddav {
+    #       return 301 $scheme://$host/remote.php/dav;
+    #   }
+
+    #   location /.well-known/caldav {
+    #       return 301 $scheme://$host/remote.php/dav;
+    #   }
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: nextcloud
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: nextcloud.homeapps.io
+    http:
+      paths:
+      - backend:
+          service:
+            name: nextcloud
+            port:
+              number: 8283
+        path: /
+        pathType: ImplementationSpecific
+  tls:
+  - hosts:
+    - nextcloud.homeapps.io
+    secretName: nxtcloud-homeapps-tls

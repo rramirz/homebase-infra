@@ -1,0 +1,67 @@
+{{- if .Values.authentik.enabled }}
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-actual-budget-to-authentik
+  namespace: {{ .Values.authentik.namespace }}
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: {{ .Values.namespace }}
+    - group: gateway.kgateway.dev
+      kind: GatewayExtension
+      namespace: {{ .Values.namespace }}
+  to:
+    - group: ""
+      kind: Service
+      name: {{ .Values.authentik.serviceName }}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: GatewayExtension
+metadata:
+  name: {{ include "actual-budget.fullname" . }}-authentik
+  namespace: {{ .Values.namespace }}
+spec:
+  type: ExtAuth
+  extAuth:
+    failOpen: false
+    headersToForward:
+      - cookie
+      - authorization
+      - x-forwarded-for
+      - x-forwarded-host
+      - x-forwarded-proto
+    httpService:
+      backendRef:
+        name: {{ .Values.authentik.serviceName }}
+        namespace: {{ .Values.authentik.namespace }}
+        port: {{ .Values.authentik.servicePort }}
+      pathPrefix: {{ .Values.authentik.authPathPrefix | quote }}
+      authorizationRequest:
+        headersToAdd:
+          X-Forwarded-Host: "%REQ(:authority)%"
+          X-Forwarded-Proto: "https"
+      authorizationResponse:
+        headersToBackend:
+          - set-cookie
+          - x-authentik-username
+          - x-authentik-groups
+          - x-authentik-email
+          - x-authentik-name
+          - x-authentik-uid
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: TrafficPolicy
+metadata:
+  name: {{ include "actual-budget.fullname" . }}-authentik
+  namespace: {{ .Values.namespace }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "actual-budget.fullname" . }}
+  extAuth:
+    extensionRef:
+      name: {{ include "actual-budget.fullname" . }}-authentik
+{{- end }}

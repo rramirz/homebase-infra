@@ -1,0 +1,13 @@
+{{- range .Values.services }}
+---
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: Backend
+metadata:
+  name: {{ .name }}
+spec:
+  type: Static
+  static:
+    hosts:
+      - host: {{ .externalIP }}
+        port: {{ .port }}
+{{- end }}

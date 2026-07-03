@@ -1,0 +1,65 @@
+---
+- name: Repair Backblaze Wine noVNC UI in LXC 106
+  hosts: pve-1
+  become: true
+  gather_facts: false
+  vars:
+    backblaze_lxc_id: 106
+  tasks:
+    - name: Verify Backblaze LXC is running
+      ansible.builtin.command: "pct status {{ backblaze_lxc_id }}"
+      register: backblaze_lxc_status
+      changed_when: false
+      failed_when: "'status: running' not in backblaze_lxc_status.stdout"
+
+    - name: Stop Backblaze Wine service
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- systemctl stop backblaze-wine"
+      changed_when: true
+
+    - name: Reset noVNC/Openbox cache and enforce safe Wine drive links
+      ansible.builtin.command: >-
+        pct exec {{ backblaze_lxc_id }} -- sh -c '
+        ts=$(date +%Y%m%d-%H%M%S);
+        [ -d /opt/backblaze-wine/config/xdg ] && mv /opt/backblaze-wine/config/xdg /opt/backblaze-wine/config/xdg.reset-$ts || true;
+        rm -f /opt/backblaze-wine/config/wine/dosdevices/z:;
+        ln -sfn /drive_d/ /opt/backblaze-wine/config/wine/dosdevices/d:;
+        ln -sfn /drive_d/home-share /opt/backblaze-wine/config/wine/dosdevices/e:;
+        chmod -R a+rwX /opt/backblaze-wine/config/wine/drive_c/ProgramData/Backblaze 2>/dev/null || true'
+      changed_when: true
+
+    - name: Start Backblaze Wine service
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- systemctl start backblaze-wine"
+      changed_when: true
+
+    - name: Wait for Backblaze container
+      ansible.builtin.command: >-
+        pct exec {{ backblaze_lxc_id }} -- sh -c
+        'docker ps --filter name=backblaze-wine --filter status=running --quiet | grep -q .'
+      register: backblaze_container_running
+      retries: 30
+      delay: 2
+      until: backblaze_container_running.rc == 0
+      changed_when: false
+
+    - name: Remove Wine Z drive after container seed
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- docker exec backblaze-wine rm -f /config/wine/dosdevices/z:"
+      changed_when: true
+      failed_when: false
+
+    - name: Open D drive in Wine Explorer to force a visible window
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- docker exec -d backblaze-wine sh -lc 'DISPLAY=:0 WINEPREFIX=/config/wine wine explorer /desktop=Default,900x700 D:'"
+      changed_when: true
+      failed_when: false
+
+    - name: Show UI repair status
+      ansible.builtin.command: >-
+        pct exec {{ backblaze_lxc_id }} -- sh -c
+        'systemctl is-active backblaze-wine;
+        docker ps --filter name=backblaze-wine;
+        docker exec backblaze-wine sh -c "ls -la /config/wine/dosdevices; ps -eo pid,stat,comm,args | grep -E \"Xvnc|openbox|explorer.exe|bzbui.exe\" | grep -v grep"'
+      changed_when: false
+      register: backblaze_ui_status
+
+    - name: Print UI repair status
+      ansible.builtin.debug:
+        var: backblaze_ui_status.stdout_lines

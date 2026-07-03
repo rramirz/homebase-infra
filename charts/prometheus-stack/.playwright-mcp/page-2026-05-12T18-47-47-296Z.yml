@@ -1,0 +1,70 @@
+- generic [ref=e4]:
+  - link "Skip to main content" [ref=e5] [cursor=pointer]:
+    - /url: "#pageContent"
+    - generic [ref=e6]: Skip to main content
+  - banner [ref=e7]:
+    - generic [ref=e8]:
+      - link "Grafana" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - img "Grafana" [ref=e11]
+      - generic [ref=e14]:
+        - img [ref=e16]
+        - button "Search or jump to..." [ref=e18] [cursor=pointer]
+        - generic [ref=e19]:
+          - img [ref=e20]
+          - generic [ref=e22]: ⌘+k
+      - generic [ref=e23]:
+        - button "Help" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+        - button "News" [ref=e27] [cursor=pointer]:
+          - img [ref=e28]
+        - link "Sign in" [ref=e30] [cursor=pointer]:
+          - /url: /d/internet-uptime-homelab/internet-uptime?orgId=1&from=now-24h&to=now&timezone=browser&refresh=30s&forceLogin=true
+    - generic [ref=e31]:
+      - button "Open menu" [ref=e33] [cursor=pointer]:
+        - img [ref=e34]
+      - navigation "Breadcrumbs" [ref=e36]:
+        - list [ref=e37]:
+          - listitem [ref=e38]:
+            - link "Home" [ref=e39] [cursor=pointer]:
+              - /url: /
+            - img [ref=e41]
+          - listitem [ref=e43]:
+            - link "Dashboards" [ref=e44] [cursor=pointer]:
+              - /url: /dashboards
+            - img [ref=e46]
+          - listitem [ref=e48]:
+            - generic "Internet Uptime" [ref=e49]
+      - generic [ref=e50]:
+        - button "Share" [ref=e56] [cursor=pointer]:
+          - generic [ref=e57]: Share
+        - button "Toggle top search bar" [ref=e59] [cursor=pointer]:
+          - img [ref=e61]
+  - main [ref=e65]:
+    - generic [ref=e68]:
+      - generic [ref=e71]:
+        - generic [ref=e72]:
+          - 'button "Time range selected: Last 24 hours" [ref=e73] [cursor=pointer]':
+            - img [ref=e74]
+            - generic [ref=e78]: Last 24 hours
+            - img [ref=e79]
+          - button "Zoom out time range" [ref=e81] [cursor=pointer]:
+            - img [ref=e82]
+        - generic [ref=e84]:
+          - button "Cancel" [ref=e85] [cursor=pointer]:
+            - img [ref=e86]
+            - generic [ref=e88]: Cancel
+          - button "Choose refresh time interval with current interval 30 seconds selected" [ref=e90] [cursor=pointer]:
+            - generic [ref=e91]: 30s
+            - img [ref=e92]
+      - generic [ref=e98]:
+        - region "Internet Status" [ref=e102]:
+          - heading "Internet Status" [level=2] [ref=e105]
+        - region "Router (OPNsense)" [ref=e110]:
+          - heading "Router (OPNsense)" [level=2] [ref=e113]
+        - region "Probe Latency (1.1.1.1)" [ref=e118]:
+          - heading "Probe Latency (1.1.1.1)" [level=2] [ref=e121]
+        - region "Uptime (24h)" [ref=e126]:
+          - heading "Uptime (24h)" [level=2] [ref=e129]
+        - generic [ref=e132]: Loading plugin panel...
+        - generic [ref=e134]: Loading plugin panel...

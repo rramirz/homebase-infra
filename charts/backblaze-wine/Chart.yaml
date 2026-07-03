@@ -1,0 +1,6 @@
+apiVersion: v2
+name: backblaze-wine
+description: Backblaze Personal client running under Wine for NAS backups
+type: application
+version: 0.2.1
+appVersion: "ubuntu24"

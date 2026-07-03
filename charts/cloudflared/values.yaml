@@ -1,0 +1,33 @@
+replicaCount: 1
+
+image:
+  repository: cloudflare/cloudflared
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+tunnel:
+  id: "251632cb-5abe-4397-8294-1e8e3f6c5b7e"
+  accountId: "b574733865d6cdd1f81eeef3ffe65a3d"
+  secret: "YmEyY2VkNzMtOWIyZi00YWJjLTg5NTEtYjBmM2VjNzNmODg1"
+  ingress:
+    - hostname: media.theramirez.casa
+      path: /alexa
+      service: http://ocean-sounds.ocean-sounds.svc.cluster.local:8081
+    - hostname: media.theramirez.casa
+      service: http://ocean-sounds.ocean-sounds.svc.cluster.local:8080
+    - hostname: townhome-test.theramirez.casa
+      service: http://townhome-frontend.townhome.svc.cluster.local:80
+    - hostname: townhome.theramirez.casa
+      service: http://townhome-frontend.townhome.svc.cluster.local:80
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

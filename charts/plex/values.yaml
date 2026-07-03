@@ -1,0 +1,80 @@
+databases: []
+plex: null
+plex-media-server:
+  image:
+    registry: index.docker.io
+    repository: plexinc/pms-docker
+    tag: 1.42.2.10156-f737b826c
+    sha: ''
+    pullPolicy: IfNotPresent
+  global:
+    imageRegistry: ''
+  dnsConfig: {}
+  ingress:
+    enabled: false
+    ingressClassName: ingress-nginx
+    url: ''
+    tls: []
+    annotations: {}
+  pms:
+    storageClassName: null
+    configStorage: 2Gi
+    configExistingClaim: ''
+    claimSecret:
+      name: ''
+      key: ''
+    gpu:
+      nvidia:
+        enabled: false
+    resources: {}
+    securityContext: {}
+    shareProcessNamespace: false
+    livenessProbe: {}
+    readinessProbe: {}
+  initContainer:
+    image:
+      registry: index.docker.io
+      repository: alpine
+      tag: '3.22'
+      sha: ''
+      pullPolicy: IfNotPresent
+    script: ''
+  extraInitContainers: {}
+  runtimeClassName: ''
+  rclone:
+    enabled: false
+    image:
+      registry: index.docker.io
+      repository: rclone/rclone
+      tag: 1.70.3
+      sha: ''
+      pullPolicy: IfNotPresent
+    configSecret: ''
+    remotes: []
+    readOnly: true
+    additionalArgs: []
+    resources: {}
+  imagePullSecrets: []
+  nameOverride: ''
+  fullnameOverride: ''
+  serviceAccount:
+    create: true
+    automountServiceAccountToken: false
+    annotations: {}
+    name: ''
+  statefulSet:
+    annotations: {}
+    podAnnotations: {}
+  service:
+    type: ClusterIP
+    port: 32400
+    annotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  priorityClassName: ''
+  commonLabels: {}
+  extraEnv: {}
+  extraVolumeMounts: []
+  extraVolumes: []
+  extraContainers: []

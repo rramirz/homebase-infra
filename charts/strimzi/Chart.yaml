@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: 0.39.0
+description: A Helm chart for Kubernetes
+name: strimzi
+type: application
+version: 0.39.0
+dependencies:
+  - name: strimzi-kafka-operator
+    repository: https://strimzi.io/charts/
+    version: 0.39.0

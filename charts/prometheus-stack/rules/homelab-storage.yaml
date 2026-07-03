@@ -1,0 +1,171 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homelab-storage
+  namespace: monitoring
+  labels:
+    release: prometheus-stack
+    app.kubernetes.io/part-of: prometheus-stack
+spec:
+  groups:
+    - name: homelab-storage.zfs
+      rules:
+        - alert: ZpoolNotOnline
+          expr: max by (instance, pool) (zfs_pool_health) > 0
+          for: 10m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "ZFS pool {{ $labels.pool }} on {{ $labels.instance }} is not ONLINE"
+            description: |
+              zfs_pool_health reports a non-ONLINE state
+              (1=DEGRADED, 2=FAULTED, 3=OFFLINE, 4=REMOVED, 5=UNAVAIL, 6=SUSPENDED).
+              Current value: {{ $value }}.
+              Check `zpool status -v {{ $labels.pool }}` on {{ $labels.instance }}.
+
+        - alert: ZpoolReadOnly
+          expr: zfs_pool_readonly > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "ZFS pool {{ $labels.pool }} is read-only"
+            description: "Pool went read-only on {{ $labels.instance }}."
+
+        - alert: ZpoolLowFreeSpace
+          expr: |
+            zfs_pool_free_bytes
+              / (zfs_pool_free_bytes + zfs_pool_allocated_bytes)
+              < 0.10
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "ZFS pool {{ $labels.pool }} <10% free"
+            description: |
+              Pool {{ $labels.pool }} on {{ $labels.instance }} has
+              {{ $value | humanizePercentage }} free. Prune snapshots or
+              expand the pool.
+
+        - alert: ZpoolCriticallyLowFreeSpace
+          expr: |
+            zfs_pool_free_bytes
+              / (zfs_pool_free_bytes + zfs_pool_allocated_bytes)
+              < 0.05
+          for: 15m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "ZFS pool {{ $labels.pool }} <5% free"
+            description: "Pool {{ $labels.pool }} on {{ $labels.instance }} is nearly full ({{ $value | humanizePercentage }} free)."
+
+        - alert: ZpoolHighFragmentation
+          expr: zfs_pool_fragmentation_ratio > 80
+          for: 6h
+          labels:
+            severity: info
+            component: storage
+          annotations:
+            summary: "ZFS pool {{ $labels.pool }} fragmentation >80%"
+
+        - alert: ZfsExporterDown
+          expr: up{job="zfs-exporter"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "ZFS exporter on {{ $labels.instance }} is unreachable"
+
+    - name: homelab-storage.filesystems
+      rules:
+        - alert: FilesystemAlmostFull
+          expr: |
+            (
+              node_filesystem_avail_bytes{job="node-external",fstype!~"tmpfs|devtmpfs|overlay|fuse"}
+              /
+              node_filesystem_size_bytes{job="node-external",fstype!~"tmpfs|devtmpfs|overlay|fuse"}
+            ) < 0.10
+            and
+            node_filesystem_size_bytes{job="node-external"} > 1e9
+          for: 30m
+          labels:
+            severity: warning
+            component: storage
+          annotations:
+            summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} <10% free"
+            description: "{{ $value | humanizePercentage }} free on {{ $labels.device }} ({{ $labels.fstype }})."
+
+        - alert: FilesystemCritical
+          expr: |
+            (
+              node_filesystem_avail_bytes{job="node-external",fstype!~"tmpfs|devtmpfs|overlay|fuse"}
+              /
+              node_filesystem_size_bytes{job="node-external",fstype!~"tmpfs|devtmpfs|overlay|fuse"}
+            ) < 0.03
+            and
+            node_filesystem_size_bytes{job="node-external"} > 1e9
+          for: 10m
+          labels:
+            severity: critical
+            component: storage
+          annotations:
+            summary: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} <3% free"
+
+    - name: homelab-storage.nas
+      rules:
+        - alert: NasHostDown
+          expr: up{job="node-external",instance="192.168.1.216"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: nas
+          annotations:
+            summary: "NAS host files (192.168.1.216) is down"
+            description: "node-exporter on the NAS has been unreachable for 5 minutes."
+
+        - alert: NasPveExporterDown
+          expr: up{job="pve",instance="192.168.1.216"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: nas
+          annotations:
+            summary: "prometheus-pve-exporter on files (192.168.1.216) is down"
+
+    - name: homelab-storage.sync
+      rules:
+        - alert: SyncStorageAlmostFull
+          expr: |
+            (
+              node_filesystem_avail_bytes{job="node-external",instance="192.168.1.78",mountpoint="/"}
+              /
+              node_filesystem_size_bytes{job="node-external",instance="192.168.1.78",mountpoint="/"}
+            ) < 0.10
+          for: 30m
+          labels:
+            severity: warning
+            component: sync
+          annotations:
+            summary: "Syncthing LXC storage <10% free"
+            description: "sync.theramirez.casa root dataset is nearly full. Check Syncthing folders and consider increasing LXC rootfs/refquota."
+
+        - alert: SyncStorageCritical
+          expr: |
+            (
+              node_filesystem_avail_bytes{job="node-external",instance="192.168.1.78",mountpoint="/"}
+              /
+              node_filesystem_size_bytes{job="node-external",instance="192.168.1.78",mountpoint="/"}
+            ) < 0.05
+          for: 10m
+          labels:
+            severity: critical
+            component: sync
+          annotations:
+            summary: "Syncthing LXC storage <5% free"
+            description: "sync.theramirez.casa is at risk of sync failure due to low free space."

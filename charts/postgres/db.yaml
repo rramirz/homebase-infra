@@ -1,0 +1,35 @@
+apiVersion: theramirez.casa/v1alpha1
+kind: DB
+metadata:
+  name: financial-metrics-db
+  namespace: financial-metrics
+spec:
+  dbName: financial-metrics-db
+  psqlClusterName: home-db
+  encoding: UTF8
+  lcCType: C
+  lcCollate: C
+---
+apiVersion: theramirez.casa/v1alpha1
+kind: DB
+metadata:
+  name: qualtrim-sync-db
+  namespace: qualtrim-sync
+spec:
+  dbName: qualtrim-sync-db
+  psqlClusterName: home-db
+  encoding: UTF8
+  lcCType: C
+  lcCollate: C
+---
+apiVersion: theramirez.casa/v1alpha1
+kind: DB
+metadata:
+  name: rental-manager-db
+  namespace: rental-manager
+spec:
+  dbName: rental-manager-db
+  psqlClusterName: home-db
+  encoding: UTF8
+  lcCType: C
+  lcCollate: C

@@ -1,0 +1,21 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "backblaze-wine.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "backblaze-wine.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: backblaze-wine.rules
+      rules:
+        - alert: BackblazeWineUnavailable
+          expr: kube_deployment_status_replicas_available{namespace="{{ .Values.namespace }}",deployment="{{ include "backblaze-wine.fullname" . }}"} < 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Backblaze Wine backup pod unavailable
+            description: Backblaze Personal under Wine has no available pod for 30 minutes. Restore service before Backblaze treats the NAS drive as missing for too long.
+{{- end }}

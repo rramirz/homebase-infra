@@ -1,0 +1,9 @@
+apiVersion: v2
+description: A Helm chart for Kubernetes
+name: grocy
+type: application
+version: 8.4.2
+dependencies:
+  - name: grocy
+    version: 8.4.2
+    repository: https://k8s-at-home.com/charts/

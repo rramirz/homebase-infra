@@ -1,0 +1,79 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/home-assistant/home-assistant
+  tag: "2026.5.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8123
+
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+    nginx.ingress.kubernetes.io/proxy-body-size: "2048m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+  hosts:
+    - host: homeassistant.theramirez.casa
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls:
+    - secretName: homeassistant.theramirez.casa-tls
+      hosts:
+        - homeassistant.theramirez.casa
+
+httpRoute:
+  enabled: true
+  annotations: {}
+  hostnames:
+    - homeassistant.theramirez.casa
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+  ## 600s read/send timeout to mirror nginx ingress; HA backups need this.
+  timeouts:
+    request: 600s
+    backendRequest: 600s
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 5Gi
+
+configuration:
+  external_url: https://homeassistant.theramirez.casa
+  forceInit: false
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 127.0.0.0/8
+    - 10.244.1.1
+
+volumeMounts:
+  - name: home-assistant-data
+    mountPath: /config
+  - name: home-assistant-config
+    mountPath: /config/configuration.yaml
+    subPath: configuration.yaml
+
+volumes:
+  - name: home-assistant-data
+    persistentVolumeClaim:
+      claimName: home-assistant-pvc
+  - name: home-assistant-config
+    configMap:
+      name: home-assistant-config

@@ -1,0 +1,192 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-homelab-storage
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: prometheus-stack
+  annotations:
+    grafana_folder: Homelab
+data:
+  homelab-storage.json: |-
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "graphTooltip": 1,
+      "schemaVersion": 39,
+      "tags": ["homelab", "storage", "zfs", "nas"],
+      "timezone": "browser",
+      "title": "Homelab / Storage Overview",
+      "time": {"from": "now-24h", "to": "now"},
+      "refresh": "30s",
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "current": {"text": "Prometheus", "value": "Prometheus"},
+            "hide": 0
+          },
+          {
+            "name": "pool",
+            "type": "query",
+            "datasource": {"type": "prometheus", "uid": "${datasource}"},
+            "query": "label_values(zfs_pool_health, pool)",
+            "refresh": 1,
+            "includeAll": true,
+            "multi": true,
+            "current": {"text": "All", "value": "$__all"}
+          },
+          {
+            "name": "nas_instance",
+            "type": "constant",
+            "current": {"text": "192.168.1.216", "value": "192.168.1.216"},
+            "hide": 2
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "NAS (files @ $nas_instance) at a glance",
+          "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+          "collapsed": false,
+          "id": 100
+        },
+        {
+          "id": 1,
+          "title": "ZFS pool health",
+          "type": "stat",
+          "gridPos": {"x": 0, "y": 1, "w": 6, "h": 5},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "max by (pool) (zfs_pool_health{pool=~\"$pool\"})", "legendFormat": "{{pool}}", "refId": "A"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "textMode": "value_and_name"},
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                {"type": "value", "options": {"0": {"text": "ONLINE", "color": "green"}}},
+                {"type": "value", "options": {"1": {"text": "DEGRADED", "color": "orange"}}},
+                {"type": "value", "options": {"2": {"text": "FAULTED", "color": "red"}}},
+                {"type": "value", "options": {"3": {"text": "OFFLINE", "color": "red"}}},
+                {"type": "value", "options": {"4": {"text": "REMOVED", "color": "red"}}},
+                {"type": "value", "options": {"5": {"text": "UNAVAIL", "color": "red"}}},
+                {"type": "value", "options": {"6": {"text": "SUSPENDED", "color": "red"}}}
+              ],
+              "color": {"mode": "thresholds"}
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "Pool used %",
+          "type": "gauge",
+          "gridPos": {"x": 6, "y": 1, "w": 6, "h": 5},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "100 * zfs_pool_allocated_bytes{pool=~\"$pool\"} / (zfs_pool_allocated_bytes{pool=~\"$pool\"} + zfs_pool_free_bytes{pool=~\"$pool\"})", "legendFormat": "{{pool}}", "refId": "A"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 80}, {"color": "red", "value": 90}]}}}
+        },
+        {
+          "id": 3,
+          "title": "Pool free",
+          "type": "stat",
+          "gridPos": {"x": 12, "y": 1, "w": 6, "h": 5},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "zfs_pool_free_bytes{pool=~\"$pool\"}", "legendFormat": "{{pool}} free", "refId": "A"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 1099511627776}, {"color": "green", "value": 5497558138880}]}}},
+          "options": {"colorMode": "value", "textMode": "value_and_name"}
+        },
+        {
+          "id": 4,
+          "title": "Fragmentation",
+          "type": "gauge",
+          "gridPos": {"x": 18, "y": 1, "w": 6, "h": 5},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "zfs_pool_fragmentation_ratio{pool=~\"$pool\"}", "legendFormat": "{{pool}}", "refId": "A"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}}
+        },
+        {
+          "type": "row", "title": "Pool capacity over time",
+          "gridPos": {"x": 0, "y": 6, "w": 24, "h": 1}, "id": 101, "collapsed": false
+        },
+        {
+          "id": 5,
+          "title": "ZFS pool: free vs allocated",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 7, "w": 24, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "zfs_pool_allocated_bytes{pool=~\"$pool\"}", "legendFormat": "{{pool}} allocated", "refId": "A"},
+            {"expr": "zfs_pool_free_bytes{pool=~\"$pool\"}", "legendFormat": "{{pool}} free", "refId": "B"},
+            {"expr": "zfs_pool_allocated_bytes{pool=~\"$pool\"} + zfs_pool_free_bytes{pool=~\"$pool\"}", "legendFormat": "{{pool}} total", "refId": "C"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"fillOpacity": 10, "drawStyle": "line", "stacking": {"mode": "none"}}}}
+        },
+        {
+          "type": "row", "title": "Per-dataset usage (Top 15)",
+          "gridPos": {"x": 0, "y": 15, "w": 24, "h": 1}, "id": 102, "collapsed": false
+        },
+        {
+          "id": 6,
+          "title": "ZFS datasets — used bytes",
+          "type": "bargauge",
+          "gridPos": {"x": 0, "y": 16, "w": 24, "h": 10},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "topk(15, zfs_dataset_used_bytes{pool=~\"$pool\",type=\"filesystem\"})", "legendFormat": "{{name}}", "refId": "A", "instant": true}
+          ],
+          "fieldConfig": {"defaults": {"unit": "bytes", "color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "blue"}]}}},
+          "options": {"displayMode": "gradient", "orientation": "horizontal", "showUnfilled": true, "reduceOptions": {"calcs": ["lastNotNull"]}}
+        },
+        {
+          "type": "row", "title": "Filesystem free % (node-exporter, excludes tmpfs/overlay)",
+          "gridPos": {"x": 0, "y": 26, "w": 24, "h": 1}, "id": 103, "collapsed": false
+        },
+        {
+          "id": 7,
+          "title": "Filesystem free % — all servers",
+          "type": "table",
+          "gridPos": {"x": 0, "y": 27, "w": 24, "h": 10},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {
+              "expr": "100 * node_filesystem_avail_bytes{job=\"node-external\",fstype!~\"tmpfs|devtmpfs|overlay|fuse|vfat|efivarfs\"} / node_filesystem_size_bytes{job=\"node-external\",fstype!~\"tmpfs|devtmpfs|overlay|fuse|vfat|efivarfs\"}",
+              "refId": "A",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true}, "renameByName": {"Value": "free %"}}},
+            {"id": "sortBy", "options": {"sort": [{"field": "free %", "desc": false}]}}
+          ],
+          "fieldConfig": {"defaults": {"custom": {"displayMode": "color-background"}, "unit": "percent", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 10}, {"color": "yellow", "value": 20}, {"color": "green", "value": 30}]}}}
+        },
+        {
+          "type": "row", "title": "Proxmox storage view (pve-exporter)",
+          "gridPos": {"x": 0, "y": 37, "w": 24, "h": 1}, "id": 104, "collapsed": false
+        },
+        {
+          "id": 8,
+          "title": "PVE storage used %",
+          "type": "bargauge",
+          "gridPos": {"x": 0, "y": 38, "w": 24, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [
+            {"expr": "100 * pve_disk_usage_bytes{id=~\"storage/.+\"} / (pve_disk_size_bytes{id=~\"storage/.+\"} > 0)", "legendFormat": "{{id}}", "refId": "A", "instant": true}
+          ],
+          "options": {"displayMode": "gradient", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"]}},
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 80}, {"color": "red", "value": 90}]}}}
+        }
+      ]
+    }

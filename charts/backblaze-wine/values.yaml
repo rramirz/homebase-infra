@@ -1,0 +1,99 @@
+namespace: backblaze
+
+image:
+  repository: tessypowder/backblaze-personal-wine
+  pullPolicy: Always
+  tag: "ubuntu24"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+shareProcessNamespace: true
+
+podSecurityContext:
+  seccompProfile:
+    type: Unconfined
+
+securityContext:
+  allowPrivilegeEscalation: true
+  appArmorProfile:
+    type: Unconfined
+  capabilities:
+    add:
+      - SYS_ADMIN
+
+env:
+  ENABLE_NETWORK_MOUNT_MASKING: "false"
+  DISABLE_AUTOUPDATE: "false"
+  FORCE_LATEST_UPDATE: "true"
+  SECURE_CONNECTION: "0"
+  DISABLE_VIRTUAL_DESKTOP: "0"
+  USER_ID: "0"
+  GROUP_ID: "0"
+  TZ: America/New_York
+
+vnc:
+  existingSecret: backblaze-wine-vnc
+  passwordKey: password
+
+service:
+  type: ClusterIP
+  port: 5800
+
+config:
+  size: 100Gi
+  storageClassName: ssd
+  accessMode: ReadWriteOnce
+
+nas:
+  enabled: true
+  createPersistentVolume: true
+  size: 30Ti
+  storageClassName: backblaze-wine-nas
+  accessMode: ReadWriteMany
+  persistentVolumeAccessMode: ReadOnlyMany
+  nfs:
+    server: 192.168.1.216
+    path: /home-storage/home-cloud/home-share
+    persistentVolumePath: /home-storage
+    mountOptions:
+      - nfsvers=4.1
+  mountPath: /drive_d
+  readOnly: false
+  persistentVolumeReadOnly: true
+
+httpRoute:
+  enabled: true
+  hostnames:
+    - backblaze.theramirez.casa
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 6Gi
+
+nodeSelector:
+  node-role.theramirez.casa/storage-host-adjacent: "true"
+
+tolerations: []
+affinity: {}
+
+monitoring:
+  enabled: true

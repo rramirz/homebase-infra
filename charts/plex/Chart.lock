@@ -1,0 +1,6 @@
+dependencies:
+- name: plex
+  repository: https://k8s-at-home.com/charts/
+  version: 6.4.3
+digest: sha256:75fcf5aaa6a6d6222dd76a8bfda7bafc5ec0913f97fbf6a3c52dd635cfdccc92
+generated: "2022-08-28T11:58:41.364848199-04:00"

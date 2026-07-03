@@ -1,0 +1,93 @@
+databases: []
+crossplane:
+  replicas: 1
+  revisionHistoryLimit: null
+  deploymentStrategy: RollingUpdate
+  image:
+    repository: xpkg.upbound.io/crossplane/crossplane
+    tag: ''
+    pullPolicy: IfNotPresent
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  hostNetwork: false
+  dnsPolicy: ''
+  customLabels: {}
+  customAnnotations: {}
+  serviceAccount:
+    create: true
+    name: ''
+    customAnnotations: {}
+  leaderElection: true
+  args: []
+  provider:
+    packages: []
+  configuration:
+    packages: []
+  function:
+    packages: []
+  imagePullSecrets: []
+  registryCaBundleConfig:
+    name: ''
+    key: ''
+  service:
+    customAnnotations: {}
+  webhooks:
+    enabled: true
+    port: ''
+  rbacManager:
+    deploy: true
+    skipAggregatedClusterRoles: false
+    replicas: 1
+    revisionHistoryLimit: null
+    leaderElection: true
+    args: []
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    topologySpreadConstraints: []
+  packageManager:
+    enableAutomaticDependencyDowngrade: false
+  priorityClassName: ''
+  resourcesCrossplane:
+    limits:
+      cpu: 500m
+      memory: 1024Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  securityContextCrossplane:
+    runAsUser: 65532
+    runAsGroup: 65532
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+  packageCache:
+    medium: ''
+    sizeLimit: 20Mi
+    pvc: ''
+    configMap: ''
+  resourcesRBACManager:
+    limits:
+      cpu: 100m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  securityContextRBACManager:
+    runAsUser: 65532
+    runAsGroup: 65532
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+  metrics:
+    enabled: false
+    port: ''
+  readiness:
+    port: ''
+  extraEnvVarsCrossplane: {}
+  extraEnvVarsRBACManager: {}
+  podSecurityContextCrossplane: {}
+  podSecurityContextRBACManager: {}
+  extraVolumesCrossplane: {}
+  extraVolumeMountsCrossplane: {}
+  extraObjects: []

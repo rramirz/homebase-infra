@@ -1,5 +1,86 @@
-*.retry
+# Secrets and credentials
+.vault_pass
+.env
+.env.*
 *.pem
 *.key
-.vault_pass
+*.p12
+*.pfx
+
+# Ansible secret vars
 vault.yaml
+group_vars/**/vault.yaml
+host_vars/**/vault.yaml
+
+# Local Kubernetes/Helm secret manifests and overrides
+/secret.yaml
+/secrets.yaml
+/*.secret.yaml
+/*.secrets.yaml
+/*-secret.yaml
+/*-secrets.yaml
+/credentials.yaml
+/*.credentials.yaml
+**/secret-values.yaml
+**/secrets-values.yaml
+**/*.secret-values.yaml
+**/*.secrets-values.yaml
+charts/*/secret.yaml
+charts/*/secrets.yaml
+apps/*/secret.yaml
+apps/*/secrets.yaml
+charts/*/*.secret.yaml
+charts/*/*.secrets.yaml
+charts/*/*-secret.yaml
+charts/*/*-secrets.yaml
+charts/*/*credentials*.yaml
+apps/*/*.secret.yaml
+apps/*/*.secrets.yaml
+apps/*/*-secret.yaml
+apps/*/*-secrets.yaml
+apps/*/*credentials*.yaml
+
+# Helm generated dependencies and packages
+charts/**/charts/
+apps/**/charts/
+*.tgz
+*.tar.gz
+
+# Sync conflict and backup files
+*.sync-conflict-*
+*.bak
+*.back
+*.backup
+*~
+
+# Ansible/local runtime noise
+*.retry
+.ansible/
+ansible.log
+
+# OS/editor noise
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+.cache/
+tmp/
+
+# Go/Python/Terraform artifacts
+bin/
+dist/
+coverage.out
+__pycache__/
+*.py[cod]
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*

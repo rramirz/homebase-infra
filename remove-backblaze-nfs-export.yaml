@@ -1,0 +1,32 @@
+---
+- name: Remove retired Backblaze K8s NFS export from pve-1
+  hosts: pve-1
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove retired Backblaze NFS export file
+      ansible.builtin.file:
+        path: /etc/exports.d/backblaze-home-storage.exports
+        state: absent
+      notify: Reload NFS exports
+
+    - name: Flush export reload before verification
+      ansible.builtin.meta: flush_handlers
+
+    - name: Show active exports after Backblaze cleanup
+      ansible.builtin.command: exportfs -v
+      changed_when: false
+      register: exportfs_output
+      when: not ansible_check_mode
+
+    - name: Verify retired Backblaze export is absent
+      ansible.builtin.assert:
+        that:
+          - exportfs_output.stdout is not search('(?m)^/home-storage/home-cloud/home-share\\s')
+        fail_msg: Retired Backblaze NFS export still appears in exportfs output
+      when: not ansible_check_mode
+
+  handlers:
+    - name: Reload NFS exports
+      ansible.builtin.command: exportfs -ra
+      changed_when: true

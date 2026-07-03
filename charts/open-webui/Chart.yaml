@@ -1,0 +1,9 @@
+apiVersion: v2
+description: A Helm chart for Kubernetes
+name: open-webui
+type: application
+version: 2.0.2
+dependencies:
+  - name: open-webui
+    repository: https://helm.openwebui.com/
+    version: 2.0.2

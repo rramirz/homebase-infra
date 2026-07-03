@@ -1,0 +1,150 @@
+---
+- name: Install and configure prometheus-pve-exporter on Proxmox nodes
+  hosts: proxmox
+  gather_facts: true
+  vars_files:
+    - group_vars/proxmox/vault.yaml
+
+  tasks:
+    - name: Ensure system packages are present
+      apt:
+        name:
+          - python3
+          - python3-pip
+          - python3-venv
+          - pipx
+        state: present
+        update_cache: true
+
+    - name: Ensure pve_exporter system user exists
+      user:
+        name: "{{ pve_exporter_user }}"
+        shell: /usr/sbin/nologin
+        system: true
+        home: /var/lib/prometheus-pve-exporter
+        create_home: true
+
+    - name: Install prometheus-pve-exporter via pipx for pve_exporter user
+      become_user: "{{ pve_exporter_user }}"
+      environment:
+        PIPX_HOME: /var/lib/prometheus-pve-exporter/pipx
+        PIPX_BIN_DIR: /var/lib/prometheus-pve-exporter/bin
+      command: pipx install prometheus-pve-exporter
+      args:
+        creates: /var/lib/prometheus-pve-exporter/bin/pve_exporter
+
+    - name: Create Prometheus config dir
+      file:
+        path: /etc/prometheus
+        state: directory
+        owner: root
+        group: "{{ pve_exporter_user }}"
+        mode: "0750"
+
+    - name: Check whether PVE API user already exists
+      command: pveum user list --output-format json
+      register: pveum_users
+      changed_when: false
+
+    - name: Create PVE API user for monitoring
+      command: pveum user add {{ pve_api_user }} --comment "Prometheus monitoring"
+      when: "pve_api_user not in (pveum_users.stdout | from_json | map(attribute='userid') | list)"
+
+    - name: Grant PVEAuditor role on / to monitoring user
+      command: pveum acl modify / --users {{ pve_api_user }} --roles {{ pve_api_role }}
+      changed_when: false
+
+    - name: Check whether API token already exists
+      command: pveum user token list {{ pve_api_user }} --output-format json
+      register: pveum_tokens
+      changed_when: false
+
+    - name: Create API token (first-time bootstrap only)
+      command: pveum user token add {{ pve_api_user }} {{ pve_api_token_id }} --privsep 0 --output-format json
+      register: pveum_token_new
+      when: "pve_api_token_id not in (pveum_tokens.stdout | from_json | map(attribute='tokenid') | list)"
+
+    - name: Show token secret on bootstrap (printed only once by Proxmox)
+      debug:
+        msg: |
+          NEW PVE API TOKEN CREATED on {{ inventory_hostname }}.
+          Add the 'value' below into group_vars/proxmox/vault.yaml under
+          pve_api_token_secrets[{{ inventory_hostname }}], then re-run.
+
+          {{ pveum_token_new.stdout | from_json }}
+      when: pveum_token_new is defined and pveum_token_new.changed
+
+    - name: Resolve this host's token secret
+      set_fact:
+        pve_api_token_secret: >-
+          {{ pve_api_token_secrets[inventory_hostname] | default('REPLACE_ME') }}
+
+    - name: Fail fast if vault secret is missing for this host
+      assert:
+        that:
+          - pve_api_token_secret is defined
+          - pve_api_token_secret != "REPLACE_ME"
+          - pve_api_token_secret | length > 0
+        fail_msg: >-
+          pve_api_token_secrets[{{ inventory_hostname }}] is not set in
+          group_vars/proxmox/vault.yaml. Copy the token 'value' printed above
+          for this host into that map and re-run the playbook.
+
+    - name: Write pve-exporter config
+      copy:
+        dest: "{{ pve_exporter_config }}"
+        owner: root
+        group: "{{ pve_exporter_user }}"
+        mode: "0640"
+        content: |
+          default:
+            user: {{ pve_api_user }}
+            token_name: {{ pve_api_token_id }}
+            token_value: {{ pve_api_token_secret }}
+            verify_ssl: false
+      notify: restart pve-exporter
+
+    - name: Install pve-exporter systemd unit
+      copy:
+        dest: /etc/systemd/system/prometheus-pve-exporter.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Prometheus Proxmox VE Exporter
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User={{ pve_exporter_user }}
+          Group={{ pve_exporter_user }}
+          ExecStart=/var/lib/prometheus-pve-exporter/bin/pve_exporter \
+              --config.file {{ pve_exporter_config }} \
+              --web.listen-address 0.0.0.0:{{ pve_exporter_port }}
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+      notify:
+        - reload systemd
+        - restart pve-exporter
+
+    - name: Enable and start pve-exporter
+      systemd:
+        name: prometheus-pve-exporter
+        enabled: true
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: true
+
+    - name: restart pve-exporter
+      systemd:
+        name: prometheus-pve-exporter
+        state: restarted

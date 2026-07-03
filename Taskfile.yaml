@@ -1,0 +1,195 @@
+version: '3'
+
+vars:
+  ANSIBLE: ansible-playbook
+  CHARTS_DIR: charts/prometheus-stack
+  MONITORING_NS: monitoring
+  BACKBLAZE_CHARTS_DIR: charts/backblaze-wine
+  BACKBLAZE_NS: backblaze
+
+env:
+  ANSIBLE_FORCE_COLOR: 'true'
+  DEBIAN_FRONTEND: noninteractive
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  inventory:
+    desc: Show Ansible inventory graph
+    cmds:
+      - ansible-inventory --graph
+
+  check:kubernetes-health:
+    aliases: [k8s:status]
+    desc: Check active Kubernetes nodes and list pods that are not Running/Succeeded
+    cmds:
+      - kubectl get nodes -o wide
+      - kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide
+
+  check:proxmox-guests:
+    aliases: [proxmox:guests]
+    desc: Check Proxmox VM/LXC inventory on both hypervisors without changing anything
+    cmds:
+      - ssh -o BatchMode=yes -o ConnectTimeout=8 root@192.168.1.216 'hostname; qm list; pct list'
+      - ssh -o BatchMode=yes -o ConnectTimeout=8 root@192.168.1.28 'hostname; qm list; pct list'
+
+  check:nas-and-sync-storage:
+    aliases: [nas:health]
+    desc: Check NAS ZFS pool health plus Syncthing LXC root filesystem usage
+    cmds:
+      - ssh -o BatchMode=yes -o ConnectTimeout=8 root@192.168.1.216 'zpool status home-storage; zpool list home-storage; zfs list -o name,used,avail,refer,mountpoint -r home-storage/home-cloud/home-share | sed -n "1,20p"; pct exec 105 -- df -hT /'
+
+  install:node-exporters-ssh-servers:
+    aliases: [exporters:install]
+    desc: Install or update Prometheus node-exporter on SSH-managed hosts in [servers]
+    cmds:
+      - '{{.ANSIBLE}} node-exporters.yaml'
+
+  install:node-exporters-proxmox-lxcs:
+    aliases: [exporters:lxc]
+    desc: Install or update Prometheus node-exporter inside Proxmox-managed LXCs via pct exec
+    cmds:
+      - ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} node-exporters-proxmox-lxc.yaml
+
+  install:all-node-exporters:
+    aliases: [exporters:all]
+    desc: Install or update all Prometheus node-exporters on SSH hosts and Proxmox-managed LXCs
+    cmds:
+      - task: install:node-exporters-ssh-servers
+      - task: install:node-exporters-proxmox-lxcs
+
+  update:active-kubernetes-node-os:
+    aliases: [os:update-k8s-nodes]
+    desc: Dist-upgrade OS packages on active Kubernetes nodes and reboot only when required
+    cmds:
+      - '{{.ANSIBLE}} update-homebase.yaml'
+
+  update:ssh-managed-server-os-no-reboot:
+    aliases: [os:update-servers]
+    desc: Dist-upgrade OS packages on SSH-managed servers and only report required reboots
+    cmds:
+      - '{{.ANSIBLE}} update-servers.yaml'
+
+  update:ssh-managed-server-os-with-reboot:
+    aliases: [os:update-servers-reboot]
+    desc: Dist-upgrade OS packages on SSH-managed servers and reboot hosts that require it
+    prompt: This can reboot hosts one at a time. Continue?
+    cmds:
+      - '{{.ANSIBLE}} update-servers.yaml -e reboot_if_required=true'
+
+  update:kubernetes-version:
+    aliases: [k8s:upgrade]
+    desc: Upgrade Kubernetes packages/control plane/workers to an interactively selected version
+    prompt: This upgrades Kubernetes packages and restarts kubelet. Continue?
+    cmds:
+      - '{{.ANSIBLE}} update-k8s.yaml'
+
+  update:plex-media-server:
+    aliases: [plex:update]
+    desc: Download and install latest Plex Media Server package in the Plex LXC
+    cmds:
+      - '{{.ANSIBLE}} update-plex.yaml'
+
+  update:syncthing-lxc:
+    aliases: [syncthing:update]
+    desc: Back up and update Syncthing in the Proxmox-managed sync LXC
+    cmds:
+      - ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} update-syncthing-lxc.yaml
+
+  monitoring:render-prometheus-stack:
+    aliases: [monitoring:render]
+    desc: Render prometheus-stack Helm chart locally to catch template errors before upgrade
+    dir: '{{.CHARTS_DIR}}'
+    cmds:
+      - helm template prometheus-stack . -n {{.MONITORING_NS}} -f values.yaml >/tmp/prometheus-stack-render.yaml
+
+  monitoring:upgrade-prometheus-stack:
+    aliases: [monitoring:upgrade]
+    desc: Apply prometheus-stack Helm values changes to the live monitoring namespace
+    dir: '{{.CHARTS_DIR}}'
+    cmds:
+      - helm upgrade prometheus-stack . -n {{.MONITORING_NS}} -f values.yaml
+
+  monitoring:apply-grafana-dashboards-and-rules:
+    aliases: [monitoring:apply-dashboards]
+    desc: Apply Grafana dashboard ConfigMaps and PrometheusRule files from the chart
+    dir: '{{.CHARTS_DIR}}'
+    cmds:
+      - kubectl apply --server-side=true -n {{.MONITORING_NS}} -f dashboards/
+      - kubectl apply -n {{.MONITORING_NS}} -f rules/
+
+  monitoring:show-live-scrape-targets:
+    aliases: [monitoring:targets]
+    desc: Show node-external targets from the live Prometheus generated config
+    cmds:
+      - >-
+        kubectl -n {{.MONITORING_NS}} get secret prometheus-prometheus-stack-kube-prom-prometheus
+        -o jsonpath='{.data.prometheus\.yaml\.gz}' | base64 -d | gunzip |
+        egrep 'job_name: node-external|192\.168\.1\.(13[5-9]|78|218|225|216|28):9100'
+
+  monitoring:show-syncthing-storage:
+    aliases: [monitoring:sync-storage]
+    desc: Show Syncthing LXC root filesystem usage from node-exporter and df
+    cmds:
+      - >-
+        curl -fsS http://192.168.1.78:9100/metrics |
+        grep 'node_filesystem_.*mountpoint="/"' | head
+      - ssh -o BatchMode=yes -o ConnectTimeout=8 root@192.168.1.216 'pct exec 105 -- df -hT /'
+
+  backblaze:lint:
+    desc: Lint retired backblaze-wine Helm chart for rollback/debug only
+    dir: '{{.BACKBLAZE_CHARTS_DIR}}'
+    cmds:
+      - helm lint . -f values.yaml
+
+  backblaze:render:
+    desc: Render retired backblaze-wine Helm chart for rollback/debug only
+    dir: '{{.BACKBLAZE_CHARTS_DIR}}'
+    cmds:
+      - helm template backblaze-wine . -n {{.BACKBLAZE_NS}} -f values.yaml >/tmp/backblaze-wine-render.yaml
+
+  backblaze:configure-nfs-export:
+    desc: Configure pve-1 /home-storage/home-cloud/home-share NFS export for the retired K8s Backblaze experiment
+    prompt: This changes NFS exports on pve-1. Continue?
+    cmds:
+      - ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} configure-backblaze-nfs-export.yaml
+
+  backblaze:remove-retired-nfs-export:
+    desc: Remove pve-1 NFS export used only by the retired K8s Backblaze experiment
+    prompt: This removes an NFS export on pve-1. Continue?
+    cmds:
+      - ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} remove-backblaze-nfs-export.yaml
+
+  backblaze:setup-lxc:
+    desc: Create pve-1 Backblaze LXC with local NAS bind mount; does not start backup client until VNC env is added
+    prompt: This creates/updates LXC 106 on pve-1 and bind-mounts NAS data read-write. Continue?
+    cmds:
+      - ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} setup-backblaze-lxc.yaml
+
+  backblaze:install-exporter:
+    desc: Install Prometheus exporter inside Backblaze LXC 106
+    cmds:
+      - ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} install-backblaze-exporter.yaml
+
+  backblaze:fix-ui:
+    desc: Fix Backblaze noVNC blue/black screen by resetting UI cache and reopening D drive
+    cmds:
+      - ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} fix-backblaze-ui.yaml
+
+  backblaze:prepare-namespace:
+    desc: Retired K8s experiment only - create and label Backblaze namespace
+    cmds:
+      - kubectl create namespace {{.BACKBLAZE_NS}} --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl label namespace {{.BACKBLAZE_NS}} pod-security.kubernetes.io/enforce=privileged pod-security.kubernetes.io/audit=privileged pod-security.kubernetes.io/warn=privileged --overwrite
+
+  backblaze:upgrade:
+    desc: RETIRED/ROLLBACK ONLY - redeploy failed K8s/NFS Backblaze experiment
+    prompt: This redeploys the retired K8s/NFS Backblaze experiment that Backblaze detected as a network disk. Continue only for rollback/debug?
+    dir: '{{.BACKBLAZE_CHARTS_DIR}}'
+    cmds:
+      - kubectl create namespace {{.BACKBLAZE_NS}} --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl label namespace {{.BACKBLAZE_NS}} pod-security.kubernetes.io/enforce=privileged pod-security.kubernetes.io/audit=privileged pod-security.kubernetes.io/warn=privileged --overwrite
+      - helm upgrade --install backblaze-wine . -n {{.BACKBLAZE_NS}} --create-namespace -f values.yaml

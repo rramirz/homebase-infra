@@ -1,0 +1,17 @@
+{{- if and .Values.nas.enabled .Values.nas.createPersistentVolume }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "backblaze-wine.fullname" . }}-nas
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "backblaze-wine.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.nas.persistentVolumeAccessMode | default .Values.nas.accessMode }}
+  storageClassName: {{ .Values.nas.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.nas.size }}
+  volumeName: {{ .Values.namespace }}-{{ include "backblaze-wine.fullname" . }}-nas
+{{- end }}

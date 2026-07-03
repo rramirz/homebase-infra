@@ -1,0 +1,15 @@
+apiVersion: gateway.kgateway.dev/v1alpha1
+kind: ListenerPolicy
+metadata:
+  name: home-websocket
+  namespace: kgateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: home
+  default:
+    httpSettings:
+      upgradeConfig:
+        enabledUpgrades:
+          - websocket

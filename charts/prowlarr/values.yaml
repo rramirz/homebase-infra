@@ -1,0 +1,76 @@
+app-template:
+  controllers:
+    main:
+      strategy: Recreate
+      containers:
+        main:
+          image:
+            repository: lscr.io/linuxserver/prowlarr
+            tag: 2.3.5
+            pullPolicy: IfNotPresent
+          env:
+            TZ: America/New_York
+            PUID: "1000"
+            PGID: "1000"
+          probes:
+            liveness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /ping
+                  port: 9696
+                initialDelaySeconds: 30
+                periodSeconds: 30
+                failureThreshold: 5
+            readiness:
+              enabled: true
+              custom: true
+              spec:
+                httpGet:
+                  path: /ping
+                  port: 9696
+                initialDelaySeconds: 30
+                periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+  service:
+    main:
+      controller: main
+      ports:
+        http:
+          port: 9696
+
+  route:
+    main:
+      enabled: true
+      kind: HTTPRoute
+      hostnames:
+        - prowlarr.theramirez.casa
+      parentRefs:
+        - name: home
+          namespace: kgateway-system
+          sectionName: https
+      rules:
+        - backendRefs:
+            - identifier: main
+              port: http
+          matches:
+            - path:
+                type: PathPrefix
+                value: /
+
+  persistence:
+    config:
+      enabled: true
+      type: persistentVolumeClaim
+      accessMode: ReadWriteOnce
+      size: 2Gi
+      retain: true
+      globalMounts:
+        - path: /config

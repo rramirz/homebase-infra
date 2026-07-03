@@ -1,0 +1,60 @@
+# Reference to the kgateway Gateway that fronts these routes.
+# The chart attaches every HTTPRoute to this Gateway via parentRefs.
+# TLS is terminated by the Gateway (wildcard cert on the listener).
+gateway:
+  name: home
+  namespace: kgateway-system
+  sectionName: https
+
+# Each entry produces:
+#   - a kgateway Backend (Static) pointing at externalIP:port
+#   - an HTTPRoute on the Gateway above for `hostname`
+#   - (optional) a BackendConfigPolicy when `tls.enabled: true`,
+#     used when the upstream LAN service speaks HTTPS itself.
+services:
+  - name: downloads
+    externalIP: 192.168.1.225
+    port: 8081
+    hostname: downloads.theramirez.casa
+
+  - name: homeflix
+    externalIP: 192.168.1.218
+    port: 32400
+    hostname: homeflix.theramirez.casa
+
+  - name: proxmox-store
+    externalIP: 192.168.1.216
+    port: 8006
+    hostname: store.theramirez.casa
+    tls:
+      enabled: true
+      insecureSkipVerify: true
+
+  - name: proxmox-infra
+    externalIP: 192.168.1.28
+    port: 8006
+    hostname: infra.theramirez.casa
+    tls:
+      enabled: true
+      insecureSkipVerify: true
+
+  - name: router
+    externalIP: 192.168.1.1
+    port: 443
+    hostname: router.theramirez.casa
+    tls:
+      enabled: true
+      insecureSkipVerify: true
+
+  - name: wifi
+    externalIP: 192.168.10.25
+    port: 80
+    hostname: wifi.theramirez.casa
+
+  - name: central-sync
+    externalIP: 192.168.1.78
+    port: 443
+    hostname: central-sync.theramirez.casa
+    tls:
+      enabled: true
+      insecureSkipVerify: true

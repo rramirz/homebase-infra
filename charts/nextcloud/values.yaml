@@ -1,0 +1,374 @@
+databases: []
+nextcloud:
+  image:
+    repository: nextcloud
+    flavor: apache
+    tag: null
+    pullPolicy: IfNotPresent
+  nameOverride: ''
+  fullnameOverride: ''
+  podAnnotations: {}
+  deploymentAnnotations: {}
+  deploymentLabels: {}
+  replicaCount: 1
+  ingress:
+    enabled: true
+    annotations: {}
+    labels: {}
+    path: /
+    pathType: Prefix
+  lifecycle: {}
+  phpClientHttpsFix:
+    enabled: false
+    protocol: https
+  nextcloud:
+    host: cloud.theramirez.casa
+    username: admin
+    password: changeme
+    existingSecret:
+      enabled: false
+      usernameKey: nextcloud-username
+      passwordKey: nextcloud-password
+      tokenKey: ''
+      smtpUsernameKey: smtp-username
+      smtpPasswordKey: smtp-password
+      smtpHostKey: smtp-host
+    update: 0
+    containerPort: 80
+    datadir: /var/www/html/data
+    persistence:
+      subPath: null
+    trustedDomains: []
+    mail:
+      enabled: false
+      fromAddress: user
+      domain: domain.com
+      smtp:
+        host: domain.com
+        secure: ssl
+        port: 465
+        authtype: LOGIN
+        name: user
+        password: pass
+    objectStore:
+      s3:
+        enabled: false
+        accessKey: ''
+        secretKey: ''
+        legacyAuth: false
+        host: ''
+        ssl: true
+        port: '443'
+        region: eu-west-1
+        bucket: ''
+        prefix: ''
+        usePathStyle: false
+        autoCreate: false
+        storageClass: STANDARD
+        sse_c_key: ''
+        existingSecret: ''
+        secretKeys:
+          host: ''
+          accessKey: ''
+          secretKey: ''
+          bucket: ''
+          sse_c_key: ''
+      swift:
+        enabled: false
+        user:
+          domain: Default
+          name: ''
+          password: ''
+        project:
+          name: ''
+          domain: Default
+        url: ''
+        region: ''
+        service: swift
+        container: ''
+        autoCreate: false
+    phpConfigs: {}
+    defaultConfigs:
+      .htaccess: true
+      apache-pretty-urls.config.php: true
+      apcu.config.php: true
+      apps.config.php: true
+      autoconfig.php: true
+      redis.config.php: true
+      reverse-proxy.config.php: true
+      s3.config.php: true
+      smtp.config.php: true
+      swift.config.php: true
+      upgrade-disable-web.config.php: true
+      imaginary.config.php: false
+    configs: {}
+    hooks:
+      pre-installation: null
+      post-installation: null
+      pre-upgrade: null
+      post-upgrade: null
+      before-starting: null
+    strategy:
+      type: Recreate
+    extraEnv: null
+    extraInitContainers: []
+    extraSidecarContainers: []
+    extraVolumes: null
+    extraVolumeMounts: null
+    securityContext: {}
+    podSecurityContext: {}
+    mariaDbInitContainer:
+      resources: {}
+      securityContext: {}
+    postgreSqlInitContainer:
+      resources: {}
+      securityContext: {}
+  nginx:
+    enabled: false
+    image:
+      repository: nginx
+      tag: alpine
+      pullPolicy: IfNotPresent
+    containerPort: 80
+    ipFamilies:
+    - IPv4
+    config:
+      default: true
+      headers:
+        Strict-Transport-Security: ''
+        Referrer-Policy: no-referrer
+        X-Content-Type-Options: nosniff
+        X-Download-Options: noopen
+        X-Frame-Options: SAMEORIGIN
+        X-Permitted-Cross-Domain-Policies: none
+        X-Robots-Tag: noindex, nofollow
+        X-XSS-Protection: 1; mode=block
+      custom: null
+    resources: {}
+    securityContext: {}
+    extraEnv: []
+  internalDatabase:
+    enabled: true
+    name: nextcloud
+  externalDatabase:
+    enabled: false
+    type: mysql
+    host: ''
+    user: nextcloud
+    password: ''
+    database: nextcloud
+    existingSecret:
+      enabled: false
+      usernameKey: db-username
+      passwordKey: db-password
+  mariadb:
+    enabled: false
+    global:
+      defaultStorageClass: ''
+    auth:
+      database: nextcloud
+      username: nextcloud
+      password: changeme
+      existingSecret: ''
+    architecture: standalone
+    primary:
+      persistence:
+        enabled: false
+        existingClaim: ''
+        storageClass: ''
+        accessMode: ReadWriteOnce
+        size: 8Gi
+  postgresql:
+    enabled: false
+    global:
+      postgresql:
+        auth:
+          username: nextcloud
+          password: changeme
+          database: nextcloud
+          existingSecret: ''
+          secretKeys:
+            adminPasswordKey: ''
+            userPasswordKey: ''
+            replicationPasswordKey: ''
+    primary:
+      persistence:
+        enabled: false
+  redis:
+    enabled: false
+    auth:
+      enabled: true
+      password: changeme
+      existingSecret: ''
+      existingSecretPasswordKey: ''
+    global:
+      storageClass: ''
+    master:
+      persistence:
+        enabled: true
+    replica:
+      persistence:
+        enabled: true
+  collabora:
+    enabled: false
+    autoscaling:
+      enabled: false
+    collabora:
+      aliasgroups: []
+      extra_params: --o:ssl.enable=false
+      server_name: null
+      existingSecret:
+        enabled: false
+        secretName: ''
+        usernameKey: username
+        passwordKey: password
+      password: examplepass
+      username: admin
+    ingress:
+      enabled: false
+      className: ''
+      annotations: {}
+      hosts:
+      - host: chart-example.local
+        paths:
+        - path: /
+          pathType: ImplementationSpecific
+      tls: []
+    resources: {}
+  cronjob:
+    enabled: false
+    resources: {}
+    lifecycle: {}
+    securityContext: {}
+    command:
+    - /cron.sh
+  service:
+    type: ClusterIP
+    port: 8080
+    loadBalancerIP: ''
+    nodePort: null
+    annotations: {}
+  persistence:
+    enabled: false
+    annotations: {}
+    accessMode: ReadWriteOnce
+    size: 8Gi
+    nextcloudData:
+      enabled: false
+      subPath: null
+      annotations: {}
+      accessMode: ReadWriteOnce
+      size: 8Gi
+  resources: {}
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+  hpa:
+    enabled: false
+    cputhreshold: 60
+    minPods: 1
+    maxPods: 10
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  dnsConfig: {}
+  imaginary:
+    enabled: false
+    replicaCount: 1
+    image:
+      registry: docker.io
+      repository: h2non/imaginary
+      tag: 1.2.4
+      pullPolicy: IfNotPresent
+      pullSecrets: []
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    resources: {}
+    securityContext:
+      runAsUser: 1000
+      runAsNonRoot: true
+    podSecurityContext: {}
+    readinessProbe:
+      enabled: true
+      failureThreshold: 3
+      successThreshold: 1
+      periodSeconds: 10
+      timeoutSeconds: 1
+    livenessProbe:
+      enabled: true
+      failureThreshold: 3
+      successThreshold: 1
+      periodSeconds: 10
+      timeoutSeconds: 1
+    service:
+      type: ClusterIP
+      loadBalancerIP: null
+      nodePort: null
+      annotations: {}
+      labels: {}
+  metrics:
+    enabled: false
+    replicaCount: 1
+    server: ''
+    https: false
+    token: ''
+    timeout: 5s
+    tlsSkipVerify: false
+    info:
+      apps: false
+    image:
+      repository: xperimental/nextcloud-exporter
+      tag: 0.6.2
+      pullPolicy: IfNotPresent
+    resources: {}
+    podAnnotations: {}
+    podLabels: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    service:
+      type: ClusterIP
+      loadBalancerIP: null
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9205'
+      labels: {}
+    securityContext:
+      runAsUser: 1000
+      runAsNonRoot: true
+    podSecurityContext: {}
+    serviceMonitor:
+      enabled: false
+      namespace: ''
+      namespaceSelector: null
+      jobLabel: ''
+      interval: 30s
+      scrapeTimeout: ''
+      labels: {}
+  rbac:
+    enabled: false
+    serviceaccount:
+      create: true
+      name: nextcloud-serviceaccount
+      annotations: {}
+  securityContext: {}

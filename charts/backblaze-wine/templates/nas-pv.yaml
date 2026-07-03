@@ -1,0 +1,21 @@
+{{- if and .Values.nas.enabled .Values.nas.createPersistentVolume }}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ .Values.namespace }}-{{ include "backblaze-wine.fullname" . }}-nas
+  labels:
+    {{- include "backblaze-wine.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .Values.nas.size }}
+  accessModes:
+    - {{ .Values.nas.persistentVolumeAccessMode | default .Values.nas.accessMode }}
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ .Values.nas.storageClassName }}
+  mountOptions:
+    {{- toYaml .Values.nas.nfs.mountOptions | nindent 4 }}
+  nfs:
+    server: {{ .Values.nas.nfs.server }}
+    path: {{ .Values.nas.nfs.persistentVolumePath | default .Values.nas.nfs.path }}
+    readOnly: {{ .Values.nas.persistentVolumeReadOnly | default .Values.nas.readOnly }}
+{{- end }}

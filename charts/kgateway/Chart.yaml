@@ -1,0 +1,9 @@
+apiVersion: v2
+description: kgateway ingress gateway for the home cluster
+name: kgateway
+type: application
+version: 0.1.0
+dependencies:
+  - name: kgateway
+    repository: oci://cr.kgateway.dev/kgateway-dev/charts
+    version: v2.2.3

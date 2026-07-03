@@ -1,0 +1,53 @@
+---
+- name: Install and configure Prometheus Node Exporter in Proxmox-managed LXCs
+  hosts: proxmox_managed_lxc
+  gather_facts: false
+  become: false
+  vars:
+    node_exporter_port: 9100
+  tasks:
+    - name: Verify LXC is running
+      command: "pct status {{ lxc_id }}"
+      register: lxc_status
+      changed_when: false
+      failed_when: "'status: running' not in lxc_status.stdout"
+
+    - name: Repair interrupted package configuration if needed
+      command: "pct exec {{ lxc_id }} -- env DEBIAN_FRONTEND=noninteractive dpkg --configure -a"
+      changed_when: false
+
+    - name: Install node exporter inside LXC
+      command: >
+        pct exec {{ lxc_id }} -- env DEBIAN_FRONTEND=noninteractive
+        apt-get -y -o Dpkg::Options::=--force-confold install prometheus-node-exporter
+      register: node_exporter_install
+      changed_when: >-
+        node_exporter_install.stdout is regex('^[1-9][0-9]* newly installed,', multiline=True)
+        or node_exporter_install.stdout is regex('^[1-9][0-9]* upgraded,', multiline=True)
+
+    - name: Read node exporter defaults inside LXC
+      command: "pct exec {{ lxc_id }} -- sh -c 'cat /etc/default/prometheus-node-exporter 2>/dev/null || true'"
+      register: node_exporter_defaults
+      changed_when: false
+
+    - name: Configure node exporter listen address inside LXC
+      command: >
+        pct exec {{ lxc_id }} -- sh -c
+        'printf "ARGS=\"--web.listen-address=0.0.0.0:{{ node_exporter_port }}\"\n" > /etc/default/prometheus-node-exporter'
+      changed_when: true
+      when: "'ARGS=\"--web.listen-address=0.0.0.0:' ~ node_exporter_port ~ '\"' not in node_exporter_defaults.stdout"
+      notify: restart node exporter in LXC
+
+    - name: Enable and start node exporter inside LXC
+      command: "pct exec {{ lxc_id }} -- systemctl enable --now prometheus-node-exporter"
+      changed_when: false
+
+    - name: Verify node exporter is active inside LXC
+      command: "pct exec {{ lxc_id }} -- systemctl is-active prometheus-node-exporter"
+      register: node_exporter_active
+      changed_when: false
+      failed_when: node_exporter_active.stdout.strip() != "active"
+
+  handlers:
+    - name: restart node exporter in LXC
+      command: "pct exec {{ lxc_id }} -- systemctl restart prometheus-node-exporter"

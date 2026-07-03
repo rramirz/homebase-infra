@@ -1,0 +1,135 @@
+cluster:
+  backups:
+    azure:
+      connectionString: ''
+      containerName: ''
+      inheritFromAzureAD: false
+      path: /
+      serviceName: blob
+      storageAccount: ''
+      storageKey: ''
+      storageSasToken: ''
+    data:
+      compression: gzip
+      encryption: AES256
+      jobs: 2
+    destinationPath: ''
+    enabled: false
+    endpointCA:
+      create: false
+      key: ''
+      name: ''
+      value: ''
+    endpointURL: ''
+    google:
+      applicationCredentials: ''
+      bucket: ''
+      gkeEnvironment: false
+      path: /
+    provider: s3
+    retentionPolicy: 30d
+    s3:
+      accessKey: ''
+      bucket: ''
+      path: /
+      region: ''
+      secretKey: ''
+    scheduledBackups:
+    - backupOwnerReference: self
+      method: barmanObjectStore
+      name: daily-backup
+      schedule: 0 0 0 * * *
+    secret:
+      create: true
+      name: ''
+    wal:
+      compression: gzip
+      encryption: AES256
+      maxParallel: 1
+  cluster:
+    additionalLabels: {}
+    affinity:
+      topologyKey: topology.kubernetes.io/zone
+    annotations: {}
+    certificates: {}
+    enableSuperuserAccess: true
+    imageName: ''
+    imagePullPolicy: IfNotPresent
+    imagePullSecrets: []
+    initdb: {}
+    instances: 3
+    logLevel: info
+    monitoring:
+      customQueries: []
+      enabled: false
+      podMonitor:
+        enabled: true
+      prometheusRule:
+        enabled: true
+        excludeRules: []
+    postgresGID: 26
+    postgresUID: 26
+    postgresql: {}
+    primaryUpdateMethod: switchover
+    primaryUpdateStrategy: unsupervised
+    priorityClassName: ''
+    resources: {}
+    roles: []
+    storage:
+      size: 8Gi
+      storageClass: ''
+    superuserSecret: ''
+  fullnameOverride: ''
+  mode: standalone
+  nameOverride: ''
+  pooler:
+    enabled: false
+    instances: 3
+    monitoring:
+      enabled: false
+      podMonitor:
+        enabled: true
+    parameters:
+      default_pool_size: '25'
+      max_client_conn: '1000'
+    poolMode: transaction
+    template: {}
+    type: rw
+  recovery:
+    azure:
+      connectionString: ''
+      containerName: ''
+      inheritFromAzureAD: false
+      path: /
+      serviceName: blob
+      storageAccount: ''
+      storageKey: ''
+      storageSasToken: ''
+    backupName: ''
+    clusterName: ''
+    destinationPath: ''
+    endpointCA:
+      create: false
+      key: ''
+      name: ''
+      value: ''
+    endpointURL: ''
+    google:
+      applicationCredentials: ''
+      bucket: ''
+      gkeEnvironment: false
+      path: /
+    method: backup
+    pitrTarget:
+      time: ''
+    provider: s3
+    s3:
+      accessKey: ''
+      bucket: ''
+      path: /
+      region: ''
+      secretKey: ''
+    secret:
+      create: true
+      name: ''
+  type: postgresql

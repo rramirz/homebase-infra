@@ -1,0 +1,41 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-home-kubernetes-cluster
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: prometheus-stack
+  annotations:
+    grafana_folder: Homelab
+data:
+  home-kubernetes-cluster.json: |-
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "graphTooltip": 1,
+      "schemaVersion": 39,
+      "tags": ["homelab", "kubernetes", "cluster"],
+      "timezone": "browser",
+      "title": "Home Kubernetes / Cluster Overview",
+      "uid": "home-kubernetes-cluster",
+      "time": {"from": "now-6h", "to": "now"},
+      "refresh": "30s",
+      "templating": {
+        "list": [
+          {"name": "datasource", "type": "datasource", "query": "prometheus", "current": {"text": "Prometheus", "value": "prometheus"}},
+          {"name": "node", "type": "query", "datasource": {"type": "prometheus", "uid": "${datasource}"}, "query": "label_values(kube_node_info, node)", "includeAll": true, "multi": true, "refresh": 1, "current": {"text": "All", "value": "$__all"}}
+        ]
+      },
+      "panels": [
+        {"id": 1, "type": "stat", "title": "Nodes Ready", "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\",node=~\"$node\"})", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "textMode": "value"}},
+        {"id": 2, "type": "stat", "title": "Pods Running", "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "sum(kube_pod_status_phase{phase=\"Running\"})", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "short"}}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "textMode": "value"}},
+        {"id": 3, "type": "stat", "title": "CPU Used", "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "sum(1 - rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "cores", "decimals": 2}}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "textMode": "value"}},
+        {"id": 4, "type": "stat", "title": "Memory Used", "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "sum(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "bytes"}}, "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "textMode": "value"}},
+        {"id": 5, "type": "timeseries", "title": "CPU by node", "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "sum by (node) (1 - rate(node_cpu_seconds_total{mode=\"idle\",node=~\"$node\"}[5m]))", "legendFormat": "{{node}}", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "cores"}}},
+        {"id": 6, "type": "timeseries", "title": "Memory by node", "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "node_memory_MemTotal_bytes{node=~\"$node\"} - node_memory_MemAvailable_bytes{node=~\"$node\"}", "legendFormat": "{{node}}", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "bytes"}}},
+        {"id": 7, "type": "timeseries", "title": "Pod restarts", "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[1h])) > 0", "legendFormat": "{{namespace}}/{{pod}}", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "short"}}},
+        {"id": 8, "type": "timeseries", "title": "PVC usage", "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8}, "datasource": {"type": "prometheus", "uid": "${datasource}"}, "targets": [{"expr": "100 * kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes", "legendFormat": "{{namespace}}/{{persistentvolumeclaim}}", "refId": "A"}], "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}}}
+      ]
+    }

@@ -1,0 +1,80 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-homelab-essentials
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: prometheus-stack
+  annotations:
+    grafana_folder: Homelab
+data:
+  homelab-essentials.json: |-
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "graphTooltip": 1,
+      "schemaVersion": 39,
+      "tags": ["homelab", "essential", "low-noise"],
+      "timezone": "browser",
+      "title": "Homelab / Essentials",
+      "uid": "homelab-essentials",
+      "time": {"from": "now-6h", "to": "now"},
+      "refresh": "1m",
+      "templating": {
+        "list": [
+          {"name": "datasource", "type": "datasource", "query": "prometheus", "current": {"text": "Prometheus", "value": "Prometheus"}}
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "K8s nodes ready",
+          "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [{"expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 5}]}}},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "textMode": "value"}
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "ZFS pool health",
+          "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [{"expr": "max(zfs_pool_health{pool=\"home-storage\"})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "ONLINE", "color": "green"}, "1": {"text": "DEGRADED", "color": "orange"}, "2": {"text": "FAULTED", "color": "red"}, "3": {"text": "OFFLINE", "color": "red"}, "4": {"text": "REMOVED", "color": "red"}, "5": {"text": "UNAVAIL", "color": "red"}, "6": {"text": "SUSPENDED", "color": "red"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}},
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background", "textMode": "value"}
+        },
+        {
+          "id": 3,
+          "type": "gauge",
+          "title": "NAS pool used %",
+          "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [{"expr": "100 * zfs_pool_allocated_bytes{pool=\"home-storage\"} / (zfs_pool_allocated_bytes{pool=\"home-storage\"} + zfs_pool_free_bytes{pool=\"home-storage\"})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 80}, {"color": "red", "value": 90}]}}}
+        },
+        {
+          "id": 4,
+          "type": "gauge",
+          "title": "Syncthing storage used %",
+          "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [{"expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node-external\",instance=\"192.168.1.78\",mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node-external\",instance=\"192.168.1.78\",mountpoint=\"/\"})", "refId": "A"}],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "yellow", "value": 80}, {"color": "orange", "value": 90}, {"color": "red", "value": 95}]}}}
+        },
+        {
+          "id": 5,
+          "type": "table",
+          "title": "Important filesystems below 20% free",
+          "gridPos": {"x": 0, "y": 4, "w": 24, "h": 8},
+          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "targets": [{"expr": "100 * node_filesystem_avail_bytes{job=\"node-external\",fstype!~\"tmpfs|devtmpfs|overlay|fuse|vfat|efivarfs\"} / node_filesystem_size_bytes{job=\"node-external\",fstype!~\"tmpfs|devtmpfs|overlay|fuse|vfat|efivarfs\"} < 20", "refId": "A", "instant": true, "format": "table"}],
+          "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "job": true}, "renameByName": {"Value": "free %"}}}, {"id": "sortBy", "options": {"sort": [{"field": "free %", "desc": false}]}}],
+          "fieldConfig": {"defaults": {"unit": "percent", "custom": {"displayMode": "color-background"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "orange", "value": 5}, {"color": "yellow", "value": 10}, {"color": "green", "value": 20}]}}}
+        }
+      ]
+    }

@@ -1,0 +1,42 @@
+{{- if .Values.httpRoute.enabled -}}
+{{- $fullName := include "n8n.fullname" . -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "n8n.labels" . | nindent 4 }}
+  {{- with .Values.httpRoute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  parentRefs:
+    {{- toYaml .Values.httpRoute.parentRefs | nindent 4 }}
+  hostnames:
+    {{- toYaml .Values.httpRoute.hostnames | nindent 4 }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $.Values.main.service.port | default 80 }}
+{{- if $.Values.webhook.enabled }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /webhook/
+        - path:
+            type: PathPrefix
+            value: /webhook-waiting/
+        - path:
+            type: PathPrefix
+            value: /form/
+      backendRefs:
+        - name: {{ $fullName }}-webhook
+          port: {{ $.Values.webhook.service.port | default 80 }}
+{{- end }}
+{{- end }}

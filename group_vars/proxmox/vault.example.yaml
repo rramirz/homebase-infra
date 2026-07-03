@@ -1,0 +1,14 @@
+---
+# Copy to group_vars/proxmox/vault.yaml and fill in. vault.yaml is gitignored.
+#
+# Each Proxmox host is standalone (not clustered) => a separate token per host.
+# The playbook prints the new token value on its first run; paste each host's
+# value into the matching key below.
+#
+# To rotate a token on a PVE host:
+#   pveum user token remove monitoring@pve prom
+#   pveum user token add    monitoring@pve prom --privsep 0
+
+pve_api_token_secrets:
+  pve-1: "REPLACE_ME"
+  pve-2: "REPLACE_ME"

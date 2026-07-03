@@ -1,0 +1,107 @@
+app-template:
+  controllers:
+    main:
+      strategy: Recreate
+      containers:
+        main:
+          image:
+            repository: ghcr.io/manimatter/decluttarr
+            tag: v2.0.0
+            pullPolicy: IfNotPresent
+          env:
+            TZ: America/New_York
+          envFrom:
+            - secretRef:
+                name: decluttarr-secret
+          probes:
+            liveness:
+              enabled: true
+              custom: true
+              spec:
+                exec:
+                  command:
+                    - pgrep
+                    - -f
+                    - main.py
+                initialDelaySeconds: 30
+                periodSeconds: 30
+                failureThreshold: 3
+            readiness:
+              enabled: true
+              custom: true
+              spec:
+                exec:
+                  command:
+                    - pgrep
+                    - -f
+                    - main.py
+                initialDelaySeconds: 15
+                periodSeconds: 15
+                failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+  service: {}
+
+  ingress: {}
+
+  persistence:
+    config:
+      enabled: true
+      type: configMap
+      name: decluttarr-config
+      globalMounts:
+        - path: /app/config
+          readOnly: true
+    media:
+      enabled: true
+      type: nfs
+      server: 192.168.1.216
+      path: /home-storage/home-cloud/home-share/Videos
+      globalMounts:
+        - path: /mnt/Videos
+
+config:
+  general:
+    logLevel: INFO
+    testRun: false
+    timer: 30
+    privateTrackerHandling: remove
+    publicTrackerHandling: remove
+    obsoleteTag: Obsolete
+    protectedTag: Keep
+  jobDefaults:
+    maxStrikes: 10
+    minDaysBetweenSearches: 7
+    maxConcurrentSearches: 1
+    minSpeed: 100
+  instances:
+    sonarrBaseUrl: http://sonarr.media-automation.svc.cluster.local:8989
+    radarrBaseUrl: http://radarr.media-automation.svc.cluster.local:7878
+  downloadClients:
+    qbittorrentBaseUrl: http://192.168.1.225:8081
+    qbittorrentName: qBittorrent
+  jobs:
+    removeBadFiles: false
+    removeDoneSeeding: false
+    removeFailedDownloads: true
+    removeFailedImports: true
+    removeMetadataMissing: true
+    removeMissingFiles: true
+    removeOrphans: true
+    removeSlow: false
+    removeStalled: true
+    removeUnmonitored: false
+    searchUnmetCutoff: true
+    searchMissing: true
+    failedImportMessagePatterns:
+      - Not a Custom Format upgrade for existing*
+      - Not an upgrade for existing*
+      - '*Found potentially dangerous file with extension*'
+      - Invalid video file*
+      - No files found are eligible for import*
+      - One or more episodes expected in this release were not imported or missing from the release

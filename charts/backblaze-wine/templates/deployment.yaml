@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "backblaze-wine.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "backblaze-wine.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "backblaze-wine.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+      labels:
+        {{- include "backblaze-wine.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      shareProcessNamespace: {{ .Values.shareProcessNamespace }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "backblaze-wine.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: backblaze-wine
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: web
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            {{- range $name, $value := .Values.env }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: VNC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.vnc.existingSecret }}
+                  key: {{ .Values.vnc.passwordKey }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: web
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: web
+              scheme: HTTP
+            initialDelaySeconds: 180
+            periodSeconds: 60
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            {{- if .Values.nas.enabled }}
+            - name: nas
+              mountPath: {{ .Values.nas.mountPath }}
+              readOnly: {{ .Values.nas.readOnly }}
+            - name: drive-d-local
+              mountPath: /drive_d_local
+            {{- end }}
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "backblaze-wine.fullname" . }}-config
+        {{- if .Values.nas.enabled }}
+        - name: nas
+          nfs:
+            server: {{ .Values.nas.nfs.server }}
+            path: {{ .Values.nas.nfs.path }}
+            readOnly: {{ .Values.nas.readOnly }}
+        - name: drive-d-local
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

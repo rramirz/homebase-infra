@@ -1,0 +1,26 @@
+{{- $monitoring := .Values.monitoring | default dict -}}
+{{- if ($monitoring.enabled | default true) -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ .Values.cluster.fullnameOverride | default .Release.Name }}-cnpg
+  namespace: {{ .Release.Namespace }}
+  labels:
+    release: prometheus-stack
+    app.kubernetes.io/name: cloudnative-pg
+    app.kubernetes.io/instance: {{ .Values.cluster.fullnameOverride | default .Release.Name }}
+    app.kubernetes.io/part-of: prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      cnpg.io/cluster: {{ .Values.cluster.fullnameOverride | default .Release.Name }}
+      cnpg.io/podRole: instance
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $monitoring.interval | default "30s" }}
+      scrapeTimeout: {{ $monitoring.scrapeTimeout | default "10s" }}
+{{- end }}

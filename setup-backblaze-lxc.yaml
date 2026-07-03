@@ -1,0 +1,186 @@
+---
+- name: Create Backblaze Personal Backup LXC on pve-1
+  hosts: pve-1
+  become: true
+  gather_facts: false
+  vars:
+    backblaze_lxc_id: 106
+    backblaze_lxc_hostname: backblaze.theramirez.casa
+    backblaze_lxc_ip: 192.168.1.79/24
+    backblaze_lxc_gateway: 192.168.1.1
+    backblaze_lxc_template: local:vztmpl/debian-12-standard_12.2-1_amd64.tar.zst
+    backblaze_lxc_rootfs: local-lvm:40
+    backblaze_lxc_memory: 4096
+    backblaze_lxc_swap: 1024
+    backblaze_lxc_cores: 2
+    backblaze_host_data_path: /home-storage/home-cloud
+    backblaze_host_config_path: /home-storage/backblaze-wine/config
+    backblaze_container_image: tessypowder/backblaze-personal-wine:ubuntu24
+
+  tasks:
+    - name: Verify NAS data path exists on pve-1
+      ansible.builtin.stat:
+        path: "{{ backblaze_host_data_path }}"
+      register: backblaze_data_path
+
+    - name: Fail if NAS data path is missing
+      ansible.builtin.fail:
+        msg: "{{ backblaze_host_data_path }} does not exist on pve-1"
+      when: not backblaze_data_path.stat.exists
+
+    - name: Ensure Backblaze host config directory exists
+      ansible.builtin.file:
+        path: "{{ backblaze_host_config_path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
+    - name: Check whether Backblaze LXC already exists
+      ansible.builtin.command: "pct status {{ backblaze_lxc_id }}"
+      register: backblaze_lxc_status
+      changed_when: false
+      failed_when: false
+
+    - name: Create Backblaze LXC with local bind mounts
+      ansible.builtin.command: >-
+        pct create {{ backblaze_lxc_id }} {{ backblaze_lxc_template }}
+        --hostname {{ backblaze_lxc_hostname }}
+        --cores {{ backblaze_lxc_cores }}
+        --memory {{ backblaze_lxc_memory }}
+        --swap {{ backblaze_lxc_swap }}
+        --rootfs {{ backblaze_lxc_rootfs }}
+        --net0 name=eth0,bridge=vmbr0,firewall=1,ip={{ backblaze_lxc_ip }},gw={{ backblaze_lxc_gateway }}
+        --features nesting=1,keyctl=1
+        --unprivileged 0
+        --onboot 1
+        --ostype debian
+        --mp0 {{ backblaze_host_data_path }},mp=/drive_d,backup=0
+        --mp2 {{ backblaze_host_data_path }}/home-share,mp=/drive_d/home-share,backup=0
+        --mp1 {{ backblaze_host_config_path }},mp=/opt/backblaze-wine/config,backup=0
+      when: backblaze_lxc_status.rc != 0
+
+    - name: Read Backblaze LXC config
+      ansible.builtin.command: "pct config {{ backblaze_lxc_id }}"
+      register: backblaze_lxc_config
+      changed_when: false
+
+    - name: Verify Backblaze LXC matches expected NAS-local design
+      ansible.builtin.assert:
+        that:
+          - "backblaze_lxc_config.stdout is search('hostname: ' ~ backblaze_lxc_hostname)"
+          - "backblaze_lxc_config.stdout is search('ip=' ~ (backblaze_lxc_ip | regex_escape()))"
+          - "backblaze_lxc_config.stdout is search('onboot: 1')"
+          - "backblaze_lxc_config.stdout is search('cores: ' ~ backblaze_lxc_cores)"
+          - "backblaze_lxc_config.stdout is search('memory: ' ~ backblaze_lxc_memory)"
+          - "backblaze_lxc_config.stdout is search('mp0: ' ~ (backblaze_host_data_path | regex_escape()) ~ ',mp=/drive_d')"
+          - "backblaze_lxc_config.stdout is search('mp2: ' ~ ((backblaze_host_data_path ~ '/home-share') | regex_escape()) ~ ',mp=/drive_d/home-share')"
+          - "backblaze_lxc_config.stdout is search('mp1: ' ~ (backblaze_host_config_path | regex_escape()) ~ ',mp=/opt/backblaze-wine/config')"
+          - "backblaze_lxc_config.stdout is not search('unprivileged: 1')"
+        fail_msg: >-
+          Existing LXC {{ backblaze_lxc_id }} does not match the Backblaze design.
+          Refusing to continue so Backblaze cannot run against the wrong or empty /drive_d.
+
+    - name: Start Backblaze LXC
+      ansible.builtin.command: "pct start {{ backblaze_lxc_id }}"
+      register: backblaze_lxc_start
+      changed_when: backblaze_lxc_start.rc == 0
+      failed_when:
+        - backblaze_lxc_start.rc != 0
+        - "'already running' not in (backblaze_lxc_start.stderr | default(''))"
+
+    - name: Wait for LXC network
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- ping -c1 -W2 {{ backblaze_lxc_gateway }}"
+      register: backblaze_lxc_ping
+      retries: 20
+      delay: 3
+      until: backblaze_lxc_ping.rc == 0
+      changed_when: false
+
+    - name: Install Docker runtime inside Backblaze LXC
+      ansible.builtin.command: >-
+        pct exec {{ backblaze_lxc_id }} -- env DEBIAN_FRONTEND=noninteractive
+        sh -c 'apt-get update && apt-get install -y docker.io ca-certificates curl && systemctl enable --now docker'
+      register: backblaze_docker_install
+      changed_when: "'Setting up' in backblaze_docker_install.stdout or 'newly installed' in backblaze_docker_install.stdout"
+
+    - name: Ensure Backblaze service directories exist in LXC
+      ansible.builtin.command: >-
+        pct exec {{ backblaze_lxc_id }} -- sh -c
+        'mkdir -p /opt/backblaze-wine/config /root/backblaze-wine && chmod 0750 /opt/backblaze-wine/config /root/backblaze-wine'
+      changed_when: false
+
+    - name: Stage Backblaze env example on pve-1
+      ansible.builtin.copy:
+        dest: /tmp/backblaze-wine.env.example
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          VNC_PASSWORD=replace-me
+          SECURE_CONNECTION=0
+          DISABLE_VIRTUAL_DESKTOP=0
+          ENABLE_NETWORK_MOUNT_MASKING=false
+          DISABLE_AUTOUPDATE=false
+          FORCE_LATEST_UPDATE=true
+          USER_ID=0
+          GROUP_ID=0
+          TZ=America/New_York
+
+    - name: Push Backblaze env example into LXC
+      ansible.builtin.command: "pct push {{ backblaze_lxc_id }} /tmp/backblaze-wine.env.example /root/backblaze-wine/backblaze-wine.env.example -perms 0600"
+      changed_when: false
+
+    - name: Stage Backblaze Docker systemd unit on pve-1
+      ansible.builtin.copy:
+        dest: /tmp/backblaze-wine.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Backblaze Personal Backup under Wine
+          Requires=docker.service
+          After=docker.service network-online.target
+          Wants=network-online.target
+          ConditionPathExists=/etc/backblaze-wine.env
+
+          [Service]
+          Type=simple
+          EnvironmentFile=/etc/backblaze-wine.env
+          ExecStartPre=-/usr/bin/docker rm -f backblaze-wine
+          ExecStartPre=-/bin/chmod -R a+rwX /opt/backblaze-wine/config/wine/drive_c/ProgramData/Backblaze
+          TimeoutStartSec=300
+          ExecStartPre=/usr/bin/docker pull {{ backblaze_container_image }}
+          ExecStart=/usr/bin/docker run --rm --name backblaze-wine \
+            --shm-size=1g \
+            --cap-add SYS_ADMIN \
+            --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined \
+            -p 5800:5800 \
+            --env-file /etc/backblaze-wine.env \
+            -v /opt/backblaze-wine/config:/config \
+            -v /drive_d:/drive_d:rw \
+            {{ backblaze_container_image }}
+          ExecStartPost=/bin/sh -c 'for i in $(seq 1 60); do /usr/bin/docker exec backblaze-wine sh -c "rm -f /config/wine/dosdevices/z: 2>/dev/null; ln -sfn /drive_d/home-share /config/wine/dosdevices/e: 2>/dev/null; chmod -R a+rwX /config/wine/drive_c/ProgramData/Backblaze 2>/dev/null" >/dev/null 2>&1 || true; sleep 2; done'
+          ExecStop=/usr/bin/docker stop backblaze-wine
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Push Backblaze Docker systemd unit into LXC
+      ansible.builtin.command: "pct push {{ backblaze_lxc_id }} /tmp/backblaze-wine.service /etc/systemd/system/backblaze-wine.service -perms 0644"
+      changed_when: false
+
+    - name: Reload systemd in Backblaze LXC
+      ansible.builtin.command: "pct exec {{ backblaze_lxc_id }} -- systemctl daemon-reload"
+      changed_when: false
+
+    - name: Show next steps
+      ansible.builtin.debug:
+        msg:
+          - "Backblaze LXC {{ backblaze_lxc_id }} prepared at {{ backblaze_lxc_ip }}."
+          - "Create /etc/backblaze-wine.env inside the LXC from /root/backblaze-wine/backblaze-wine.env.example, set VNC_PASSWORD, then run: systemctl enable --now backblaze-wine"
+          - "VNC/noVNC URL after start: http://{{ backblaze_lxc_ip | regex_replace('/.*$', '') }}:5800"

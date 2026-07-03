@@ -1,0 +1,58 @@
+pihole:
+  DNS1: 1.1.1.1
+  DNS2: 1.0.0.1
+
+  admin:
+    existingSecret: ""
+    passwordKey: password
+
+  adminPassword: Sp4lif3007o!
+
+  ingress:
+    ingressClassName: nginx
+
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+    enabled: true
+    hosts:
+      - pihole.theramirez.casa
+    path: /admin
+    tls:
+    - secretName: pihole-tls
+      hosts:
+        - pihole.theramirez.casa
+
+
+  maxSurge: 1
+  maxUnavailable: 0
+
+  persistentVolumeClaim:
+    accessModes:
+      - ReadWriteOnce
+    annotations: {}
+    enabled: true
+    size: 5Gi
+
+  serviceDhcp:
+    annotations: {}
+    enabled: true
+    externalTrafficPolicy: Local
+    loadBalancerIP: ""
+    loadBalancerIPv6: ""
+    type: ClusterIP
+
+  serviceDns:
+    annotations:
+      metallb.universe.tf/address-pool: default
+    externalTrafficPolicy: Local
+    loadBalancerIP: ""
+    loadBalancerIPv6: ""
+    mixedService: false
+    nodePort: ""
+    port: 53
+    type: LoadBalancer
+
+  strategyType: RollingUpdate
+  virtualHost: pihole.home
+  webHttp: "80"
+  webHttps: "443"

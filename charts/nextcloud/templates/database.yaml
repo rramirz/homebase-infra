@@ -1,0 +1,21 @@
+
+{{- if .Values.databases }}
+{{- range .Values.databases }}
+apiVersion: theramirez.casa/v1alpha1
+kind: DB
+metadata:
+  name: {{ .name }}-db
+spec:
+  dbName: {{ .dbName }}
+  psqlClusterName: {{ .psqlClusterName }}
+{{- end }}
+{{- else }}
+apiVersion: theramirez.casa/v1alpha1
+kind: DB
+metadata:
+  name: {{ .Release.Name }}-db
+spec:
+  dbName: {{ .Values.dbName }}
+  psqlClusterName: {{ .Values.psqlClusterName }}
+{{- end }}
+

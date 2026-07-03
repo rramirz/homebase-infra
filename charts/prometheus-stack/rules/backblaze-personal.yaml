@@ -1,0 +1,85 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: backblaze-personal
+  namespace: monitoring
+  labels:
+    release: prometheus-stack
+    app.kubernetes.io/part-of: prometheus-stack
+spec:
+  groups:
+    - name: backblaze-personal.backup
+      rules:
+        - alert: BackblazeExporterDown
+          expr: up{job="backblaze-personal"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            summary: "Backblaze exporter is down"
+            description: "Prometheus cannot scrape Backblaze Personal exporter on {{ $labels.instance }}."
+
+        - alert: BackblazeServiceDown
+          expr: backblaze_service_active{job="backblaze-personal"} == 0 or backblaze_container_running{job="backblaze-personal"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            summary: "Backblaze Wine service/container is not running"
+            description: "Check LXC 106 on pve-1: systemctl status backblaze-wine."
+
+        - alert: BackblazeDDriveNotBackupReady
+          expr: backblaze_d_drive_fixed{job="backblaze-personal"} == 0 or backblaze_d_drive_selected{job="backblaze-personal"} == 0 or backblaze_d_drive_selected_files{job="backblaze-personal"} < 1
+          for: 30m
+          labels:
+            severity: critical
+            component: backup
+          annotations:
+            summary: "Backblaze D: drive is not backup-ready"
+            description: "D: must be Fixed, selected, and have selected files >0. Check Backblaze Settings in noVNC."
+
+        - alert: BackblazeEDriveNotBackupReady
+          expr: >-
+            backblaze_volume_included{job="backblaze-personal",mount="E:\\"} == 0
+            or backblaze_volume_selected_files{job="backblaze-personal",mount="E:\\"} < 1
+            or absent(backblaze_volume_included{job="backblaze-personal",mount="E:\\"})
+          for: 30m
+          labels:
+            severity: critical
+            component: backup
+          annotations:
+            summary: "Backblaze E: (home-share) is not backup-ready"
+            description: "E: maps /drive_d/home-share (2.8T NAS dataset). It must be selected with files >0, or only ~70G of home-cloud root gets backed up. Select E: in Backblaze Settings via noVNC."
+
+        - alert: BackblazeZDriveSelected
+          expr: backblaze_z_drive_selected{job="backblaze-personal"} == 1
+          for: 30m
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            summary: "Backblaze Z: drive is selected"
+            description: "Z: maps container root, not NAS data. Unselect Z: in Backblaze settings; keep D: selected."
+
+        - alert: BackblazeBackupNotCompleting
+          expr: backblaze_last_backup_age_seconds{job="backblaze-personal"} > 129600
+          for: 2h
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            summary: "Backblaze backup has not completed in 36h"
+            description: "Last completed backup is {{ $value | humanizeDuration }} old. Initial scan/upload may take longer; verify progress before muting."
+
+        - alert: BackblazeUploadStalled
+          expr: delta(backblaze_remaining_bytes{job="backblaze-personal"}[6h]) >= 0 and backblaze_remaining_bytes{job="backblaze-personal"} > 0
+          for: 1h
+          labels:
+            severity: warning
+            component: backup
+          annotations:
+            summary: "Backblaze upload stalled"
+            description: "Remaining bytes has not decreased in 6h. Check bzbui.exe or network at http://192.168.1.79:5800"

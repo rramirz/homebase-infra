@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: 0.7.4
+description: A Helm chart for Kubernetes
+name: mongodb
+type: application
+version: 0.7.4
+dependencies:
+  - name: community-operator
+    version: 0.7.4
+    repository: https://mongodb.github.io/helm-charts

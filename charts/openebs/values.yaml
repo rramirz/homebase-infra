@@ -1,0 +1,52 @@
+openebs:
+  engines:
+    local:
+      lvm:
+        enabled: false 
+      zfs:
+        enabled: false 
+    replicated:
+      mayastor:
+        enabled: false 
+  localpv-provisioner:
+    rbac:
+      create: true
+  lvm-localpv:
+    crds:
+      csi:
+        volumeSnapshots:
+          enabled: false
+      lvmLocalPv:
+        enabled: true
+    enabled: true
+  mayastor:
+    crds:
+      enabled: false
+    csi:
+      node:
+        initContainers:
+          enabled: true
+    enabled: true
+    localpv-provisioner:
+      enabled: false
+  openebs-crds:
+    csi:
+      volumeSnapshots:
+        enabled: true
+        keep: true
+  preUpgradeHook:
+    image:
+      pullPolicy: IfNotPresent
+      registry: docker.io
+      repo: bitnami/kubectl
+      tag: 1.25.15
+  release:
+    version: 4.0.1
+  zfs-localpv:
+    crds:
+      csi:
+        volumeSnapshots:
+          enabled: false
+      zfsLocalPv:
+        enabled: true
+    enabled: true

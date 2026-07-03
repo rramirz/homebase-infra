@@ -1,0 +1,101 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xdbs.theramirez.casa
+  labels:
+    crossplane.io/xrd: xdbs.theramirez.casa
+    provider: postgres
+    service: database
+spec:
+  compositeTypeRef:
+    apiVersion: theramirez.casa/v1alpha1
+    kind: XDB
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        patchSets:
+          - name: common-fields
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.psqlClusterName
+                toFieldPath: spec.providerConfigRef.name
+        resources:
+          - name: app
+            base:
+              apiVersion: postgresql.sql.crossplane.io/v1alpha1
+              kind: Role
+              metadata:
+                name: my-postgresql-db
+              spec:
+                forProvider:
+                  connectionLimit: 50
+                  privileges:
+                    inherit: true
+                    login: true
+                providerConfigRef:
+                  name: ""
+                writeConnectionSecretToRef:
+                  name: ""
+                  namespace: ""
+            patches:
+              - type: PatchSet
+                patchSetName: common-fields
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.dbName
+                toFieldPath: metadata.name
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: "%s-db-%s"
+                  variables:
+                    - fromFieldPath: spec.psqlClusterName
+                    - fromFieldPath: spec.dbName
+                toFieldPath: spec.writeConnectionSecretToRef.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.claimRef.namespace
+                toFieldPath: spec.writeConnectionSecretToRef.namespace
+          - name: database
+            base:
+              apiVersion: postgresql.sql.crossplane.io/v1alpha1
+              kind: Database
+              spec:
+                deletionPolicy: Delete
+                forProvider:
+                  allowConnections: true
+                  connectionLimit: -1
+                  encoding: UTF8
+                  lcCType: C
+                  lcCollate: C
+                  owner: ""
+                providerConfigRef:
+                  name: ""
+            patches:
+              - type: PatchSet
+                patchSetName: common-fields
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.allowConnections
+                toFieldPath: spec.forProvider.allowConnections
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.connectionLimit
+                toFieldPath: spec.forProvider.connectionLimit
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.encoding
+                toFieldPath: spec.forProvider.encoding
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.lcCType
+                toFieldPath: spec.forProvider.lcCType
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.lcCollate
+                toFieldPath: spec.forProvider.lcCollate
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.dbName
+                toFieldPath: spec.forProvider.owner
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.dbName
+                toFieldPath: metadata.name

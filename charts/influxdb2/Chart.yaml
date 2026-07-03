@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: 2.3.0
+description: A Helm chart for Kubernetes
+name: influxdb2
+type: application
+version: 2.1.1
+dependencies:
+  - name: influxdb2
+    version: 2.1.1
+    repository: https://helm.influxdata.com/

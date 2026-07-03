@@ -1,0 +1,19 @@
+Backblaze Wine deployed to namespace {{ .Values.namespace }}.
+
+GUI:
+{{- if .Values.httpRoute.enabled }}
+{{- range .Values.httpRoute.hostnames }}
+  https://{{ . }}
+{{- end }}
+{{- else }}
+  kubectl -n {{ .Values.namespace }} port-forward svc/{{ include "backblaze-wine.fullname" . }} 5800:{{ .Values.service.port }}
+  https://127.0.0.1:5800
+{{- end }}
+
+Required before first login:
+  kubectl -n {{ .Values.namespace }} create secret generic {{ .Values.vnc.existingSecret }} --from-literal={{ .Values.vnc.passwordKey }}='<password>'
+
+Runtime checks:
+  kubectl -n {{ .Values.namespace }} get pods,pvc,httproute
+  kubectl -n {{ .Values.namespace }} logs deploy/{{ include "backblaze-wine.fullname" . }}
+  kubectl -n {{ .Values.namespace }} exec deploy/{{ include "backblaze-wine.fullname" . }} -- mount | grep overlay

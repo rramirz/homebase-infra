@@ -4,8 +4,6 @@ k8s-node-1   ansible_host=192.168.1.136
 k8s-node-2   ansible_host=192.168.1.137
 k8s-node-3   ansible_host=192.168.1.138
 k8s-node-4   ansible_host=192.168.1.139
-k8s-node-5   ansible_host=192.168.1.140
-k8s-node-6   ansible_host=192.168.1.141
 
 [k8s_master]
 k8s-master
@@ -15,14 +13,23 @@ k8s-node-1
 k8s-node-2
 k8s-node-3
 k8s-node-4
-k8s-node-5
-k8s-node-6
+
+[retired_k8s_nodes]
+# Retired 2026-06-05 during cluster consolidation; VMs stopped/onboot=0 on pve-1.
+k8s-node-5   ansible_host=192.168.1.140
+k8s-node-6   ansible_host=192.168.1.141
 
 [lxc]
-lxc-1   ansible_host=192.168.1.216
-lxc-2   ansible_host=192.168.1.28
-lxc-3   ansible_host=192.168.1.218
-lxc-4   ansible_host=192.168.1.225
+lxc-3   ansible_host=192.168.1.218   ansible_user=root ansible_become=false
+lxc-4   ansible_host=192.168.1.225   ansible_user=root ansible_become=false
+
+[proxmox_managed_lxc]
+sync-lxc      ansible_host=192.168.1.216 ansible_user=root ansible_become=false lxc_id=105 lxc_ip=192.168.1.78 lxc_name=sync.theramirez.casa
+backblaze-lxc ansible_host=192.168.1.216 ansible_user=root ansible_become=false lxc_id=106 lxc_ip=192.168.1.79 lxc_name=backblaze.theramirez.casa
+
+[proxmox]
+pve-1   ansible_host=192.168.1.216   ansible_user=root ansible_become=false
+pve-2   ansible_host=192.168.1.28    ansible_user=root ansible_become=false
 
 [gpu_nodes]
 # Add hosts with AMD GPUs here
@@ -39,3 +46,4 @@ lxc-3   ansible_user=root
 [servers:children]
 home_base
 lxc
+proxmox

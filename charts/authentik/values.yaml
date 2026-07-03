@@ -1,0 +1,57 @@
+authentik:
+  blueprints:
+    configMaps:
+      - actual-budget-blueprint
+
+  authentik:
+    existingSecret:
+      secretName: authentik-config
+
+  postgresql:
+    enabled: true
+    auth:
+      existingSecret: authentik-postgresql-auth
+      username: authentik
+      database: authentik
+    primary:
+      persistence:
+        enabled: true
+        storageClass: nvme
+        size: 10Gi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi
+
+  server:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+    route:
+      main:
+        enabled: true
+        kind: HTTPRoute
+        hostnames:
+          - authentik.theramirez.casa
+        parentRefs:
+          - name: home
+            namespace: kgateway-system
+            sectionName: https
+
+  worker:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+
+  serviceAccount:
+    create: true

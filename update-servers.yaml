@@ -1,0 +1,39 @@
+---
+- name: Update OS packages on SSH-managed home servers
+  hosts: servers
+  serial: 1
+  vars:
+    reboot_if_required: false
+  tasks:
+    - name: Setup Kubernetes apt repository on Kubernetes nodes
+      include_tasks: tasks/k8s-apt-repo.yaml
+      when: inventory_hostname in groups.get('home_base', [])
+
+    - name: Update apt cache
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+
+    - name: Check if reboot is required
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Show reboot recommendation
+      debug:
+        msg: "{{ inventory_hostname }} requires reboot"
+      when: reboot_required_file.stat.exists and not reboot_if_required | bool
+
+    - name: Reboot if requested and required
+      reboot:
+        msg: "Reboot initiated by Ansible for OS updates"
+        connect_timeout: 5
+        reboot_timeout: 300
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+        test_command: uptime
+      when: reboot_required_file.stat.exists and reboot_if_required | bool

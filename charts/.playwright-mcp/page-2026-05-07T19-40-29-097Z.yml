@@ -1,0 +1,13 @@
+- generic [ref=e5]:
+  - img [ref=e7]
+  - generic [ref=e9]:
+    - generic [ref=e10]: Initializing the connection to the local database…
+    - img [ref=e12]
+  - generic [ref=e16]:
+    - generic [ref=e17]: Initializing the connection to the local database…
+    - img [ref=e19]
+  - generic [ref=e24]:
+    - strong [ref=e26]: No server configured
+    - link "Change" [ref=e27] [cursor=pointer]:
+      - /url: /config-server
+  - generic [ref=e28]: "App: v26.4.0 | Server: N/A"

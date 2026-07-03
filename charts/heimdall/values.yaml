@@ -1,0 +1,12 @@
+heimdall:
+  ingress:
+    main:
+      enabled: true
+      hosts:
+        - host: main.home
+          paths:
+            - path: /
+
+  persistence:
+    config:
+      enabled: true

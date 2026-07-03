@@ -1,0 +1,34 @@
+gateway:
+  enabled: true
+  name: home
+  gatewayClassName: kgateway
+
+  parameters:
+    enabled: true
+    name: home-network
+    service:
+      type: LoadBalancer
+      externalTrafficPolicy: Cluster
+      annotations:
+        metallb.io/address-pool: home-network
+
+  listeners:
+    http:
+      enabled: true
+      port: 80
+      hostname: ""
+      allowedRoutes:
+        namespaces:
+          from: All
+    https:
+      enabled: false
+      port: 443
+      hostname: ""
+      certificateRefs: []
+      allowedRoutes:
+        namespaces:
+          from: All
+
+kgateway:
+  controller:
+    replicaCount: 1

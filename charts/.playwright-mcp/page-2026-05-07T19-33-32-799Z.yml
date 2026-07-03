@@ -1,0 +1,12 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - region "Status messages"
+  - generic [ref=e7]:
+    - generic [ref=e8] [cursor=pointer]: ⋯
+    - banner
+    - main "Authentication form" [ref=e9]:
+      - img "authentik Logo" [ref=e11]
+      - progressbar [ref=e13]
+    - contentinfo "Site footer" [ref=e17]:
+      - list "Site links" [ref=e19]:
+        - listitem [ref=e20]: Powered by authentik
