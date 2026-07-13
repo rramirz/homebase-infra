@@ -1,0 +1,41 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: version-checker
+  namespace: monitoring
+  labels:
+    release: prometheus-stack
+    app.kubernetes.io/part-of: prometheus-stack
+spec:
+  groups:
+    - name: version-checker.rules
+      rules:
+        - alert: VersionCheckerImageLookupFailures
+          # Excludes registry.theramirez.casa: first-party images on an unauthenticated
+          # private registry that version-checker can never resolve "latest" for.
+          # That's expected/permanent, not a real upgrade signal.
+          expr: |
+            increase(version_checker_image_failures_total{image!~"registry.theramirez.casa/.*"}[15m]) > 0
+          for: 15m
+          labels:
+            severity: warning
+            component: upgrades
+          annotations:
+            summary: "version-checker cannot resolve upstream image for {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: |
+              version-checker failed to look up the upstream image for container
+              {{ $labels.container }} (image {{ $labels.image }}) in
+              {{ $labels.namespace }}/{{ $labels.pod }} over the last 15 minutes.
+              Can indicate a removed tag or an unsupported/private registry - check
+              before treating as a real upgrade signal.
+
+        - alert: VersionCheckerDown
+          expr: up{job="version-checker"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: upgrades
+          annotations:
+            summary: "version-checker is unreachable"
+            description: "The version-checker deployment in monitoring has been unscrapeable for 10 minutes."

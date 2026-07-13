@@ -1,0 +1,10 @@
+apiVersion: v2
+name: version-checker
+description: jetstack version-checker - exposes running image versions vs latest upstream as Prometheus metrics
+type: application
+version: 0.1.0
+appVersion: "v0.11.0"
+dependencies:
+  - name: version-checker
+    repository: https://charts.jetstack.io
+    version: v0.11.0

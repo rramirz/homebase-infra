@@ -1,0 +1,60 @@
+replicaCount: 1
+
+image:
+  repository: binwiederhier/ntfy
+  tag: "v2.25.0"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: ntfy
+
+service:
+  type: ClusterIP
+  port: 80
+  containerPort: 80
+
+persistence:
+  size: 1Gi
+  storageClass: ssd
+
+httpRoute:
+  enabled: true
+  annotations: {}
+  hostnames:
+    - ntfy.theramirez.casa
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+  # ntfy subscribers hold long-lived connections (websocket / json stream).
+  # "0s" disables the Gateway API request timeout so streams aren't cut.
+  timeouts:
+    request: 0s
+    backendRequest: 0s
+
+env:
+  TZ: America/New_York
+  NTFY_BASE_URL: https://ntfy.theramirez.casa
+  NTFY_BEHIND_PROXY: "true"
+  NTFY_CACHE_FILE: /var/cache/ntfy/cache.db
+  NTFY_CACHE_DURATION: 72h
+  NTFY_ATTACHMENT_CACHE_DIR: /var/cache/ntfy/attachments
+  NTFY_ENABLE_LOGIN: "false"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podSecurityContext: {}
+
+securityContext: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: []

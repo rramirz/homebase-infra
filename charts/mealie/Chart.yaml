@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mealie
+description: Mealie recipe manager for the home cluster
+type: application
+version: 0.1.0
+appVersion: "v3.20.1"

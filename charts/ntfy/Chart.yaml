@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ntfy
+description: ntfy push notification server for the home cluster
+type: application
+version: 0.1.0
+appVersion: "v2.25.0"

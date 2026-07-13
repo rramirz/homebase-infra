@@ -1006,6 +1006,12 @@ kube-prometheus-stack:
     enabled: true
     namespaceOverride: ""
 
+    ## Override the bundled Grafana app version ahead of the kube-prometheus-stack chart bump.
+    ## Bumped 2026-07-03: 11.4.0 -> 13.1.0 (latest stable). Two majors up; verify dashboards/plugins after upgrade.
+    image:
+      repository: grafana/grafana
+      tag: "13.1.0"
+
     ## ForceDeployDatasources Create datasource configmap even if grafana deployment has been disabled
     ##
     forceDeployDatasources: false

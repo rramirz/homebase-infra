@@ -20,6 +20,7 @@ Deployments are mostly Ansible playbooks and Helm releases applied to Rafael's h
 - Current kube context: `home-base`.
 - Shared ingress uses kgateway Gateway `home` on MetalLB VIP `192.168.1.83`.
 - Default StorageClass: OpenEBS local `ssd`.
+- Mealie deploy/update: `task mealie:lint`, `task mealie:render`, then `task mealie:upgrade`; release `mealie`, namespace `mealie`, hostname `mealie.theramirez.casa`.
 - Ask before destructive changes, reboots, PVC deletion, storage edits, or Gateway/DNS/firewall changes.
 
 ## CI/CD

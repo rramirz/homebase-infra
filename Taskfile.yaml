@@ -6,6 +6,9 @@ vars:
   MONITORING_NS: monitoring
   BACKBLAZE_CHARTS_DIR: charts/backblaze-wine
   BACKBLAZE_NS: backblaze
+  VERSION_CHECKER_CHARTS_DIR: charts/version-checker
+  MEALIE_CHARTS_DIR: charts/mealie
+  MEALIE_NS: mealie
 
 env:
   ANSIBLE_FORCE_COLOR: 'true'
@@ -129,6 +132,44 @@ tasks:
         kubectl -n {{.MONITORING_NS}} get secret prometheus-prometheus-stack-kube-prom-prometheus
         -o jsonpath='{.data.prometheus\.yaml\.gz}' | base64 -d | gunzip |
         egrep 'job_name: node-external|192\.168\.1\.(13[5-9]|78|218|225|216|28):9100'
+
+  monitoring:render-version-checker:
+    desc: Render version-checker Helm chart locally to catch template errors before upgrade
+    dir: '{{.VERSION_CHECKER_CHARTS_DIR}}'
+    cmds:
+      - helm dependency update .
+      - helm template version-checker . -n {{.MONITORING_NS}} -f values.yaml >/tmp/version-checker-render.yaml
+
+  monitoring:upgrade-version-checker:
+    desc: Apply version-checker Helm values changes to the live monitoring namespace
+    dir: '{{.VERSION_CHECKER_CHARTS_DIR}}'
+    cmds:
+      - helm upgrade version-checker . -n {{.MONITORING_NS}} -f values.yaml
+
+  check:cluster-upgrades:
+    aliases: [nova]
+    desc: Show installed-vs-latest for live Helm releases and container images (requires nova-fairwinds)
+    cmds:
+      - nova find --helm --show-old --format table
+      - nova find --containers --show-old --format table
+
+  mealie:lint:
+    desc: Lint Mealie Helm chart
+    dir: '{{.MEALIE_CHARTS_DIR}}'
+    cmds:
+      - helm lint . -f values.yaml
+
+  mealie:render:
+    desc: Render Mealie Helm chart locally to catch template errors before upgrade
+    dir: '{{.MEALIE_CHARTS_DIR}}'
+    cmds:
+      - helm template mealie . -n {{.MEALIE_NS}} -f values.yaml >/tmp/mealie-render.yaml
+
+  mealie:upgrade:
+    desc: Install or upgrade Mealie in the home cluster
+    dir: '{{.MEALIE_CHARTS_DIR}}'
+    cmds:
+      - helm upgrade --install mealie . -n {{.MEALIE_NS}} --create-namespace -f values.yaml
 
   monitoring:show-syncthing-storage:
     aliases: [monitoring:sync-storage]
