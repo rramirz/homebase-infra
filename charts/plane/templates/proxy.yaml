@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Release-derived name (unlike the five app-tier Services in Task 4):
+  # nothing inside the official Caddyfile needs to resolve *this* Service by
+  # a bare literal name — Caddy is the entrypoint other things route *to*,
+  # not a hostname anything else in this chart looks up. Only Task 5's own
+  # HTTPRoute backendRef needs to know this name.
+  name: {{ include "plane.fullname" . }}-proxy
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  type: ClusterIP
+  ports:
+    - name: proxy
+      port: {{ .Values.ports.proxy }}
+      targetPort: proxy
+      protocol: TCP
+  selector:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plane.fullname" . }}-proxy
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plane.labels" . | nindent 6 }}
+      app.kubernetes.io/component: proxy
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: proxy
+    spec:
+      containers:
+        # No command/args override: runs the pinned image's own default CMD
+        # (`caddy run --config /etc/caddy/Caddyfile --adapter caddyfile`,
+        # verified via `docker inspect`) against the official, unmodified
+        # baked-in Caddyfile (verified via `docker run --entrypoint /bin/cat
+        # ... /etc/caddy/Caddyfile` — its literal contents are quoted in
+        # full in Task 4's report, Finding 4). kgateway terminates TLS at
+        # the gateway (see httproutes.yaml / gateway `https` listener);
+        # Caddy here only ever serves plain HTTP on :80, per SITE_ADDRESS
+        # below, and Caddy's automatic-HTTPS/ACME machinery only engages
+        # for site addresses that are hostnames, never for a bare port
+        # address — so no CERT_EMAIL/CERT_ACME_CA/CERT_ACME_DNS is set or
+        # needed, and no ACME traffic ever leaves this pod.
+        - name: proxy
+          image: "{{ .Values.image.plane.repository }}/plane-proxy:{{ .Values.image.plane.tag }}@{{ .Values.image.plane.digests.proxy }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Runs as root by design (verified via `docker inspect
+          # --format {{"{{"}}.Config.User{{"}}"}}`: empty, i.e. root) — the
+          # image ships no dedicated non-root user and binds container port
+          # 80 (a privileged port at the OS level were this a bare Linux
+          # process; irrelevant to the container's own uid but consistent
+          # with why root wasn't dropped). Same conservative posture as
+          # Task 3/4 images whose startup behavior under a non-root user
+          # wasn't independently verified: only allowPrivilegeEscalation is
+          # disabled.
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.ports.proxy }}
+              protocol: TCP
+          env:
+            # Bare `:80` (no hostname): binds Caddy's HTTP listener on
+            # port 80 only and — per Caddy's own documented behavior —
+            # skips automatic HTTPS/ACME entirely, since that machinery
+            # only activates for site addresses containing a hostname.
+            # kgateway's `https` listener (wildcard *.theramirez.casa,
+            # TLS terminated there) is what actually serves HTTPS to
+            # clients; this pod only ever speaks plain HTTP internally.
+            - name: SITE_ADDRESS
+              value: ":80"
+            # request_body { max_size {$FILE_SIZE_LIMIT} } needs a real
+            # value (Task 4 report, Finding 4) — reuses the same
+            # non-secret value already set for the app tier's own upload
+            # limit in values.yaml (Task 2).
+            - name: FILE_SIZE_LIMIT
+              value: {{ .Values.env.fileSizeLimit | quote }}
+            # MUST stay non-empty: the official Caddyfile's
+            # `reverse_proxy /{$BUCKET_NAME}[/*] plane-minio:9000` matchers
+            # collapse to a bare `/` when this is unset, which Caddy's
+            # path matcher treats as an exact match on the site root —
+            # silently hijacking every request to `/` ahead of the final
+            # `reverse_proxy /* web:3000` catch-all (Task 4 report,
+            # Finding 4, verified against the pinned image's own
+            # Caddyfile). Set to this chart's actual bucket name so the
+            # matchers stay scoped to `/plane-uploads` and
+            # `/plane-uploads/*` — a route no client ever requests through
+            # this domain (S3 access goes directly to
+            # s3.theramirez.casa/SeaweedFS instead, see httproutes.yaml),
+            # so `plane-minio:9000` never needs to resolve to anything.
+            # Deliberately NOT creating a `plane-minio` Service/alias —
+            # this chart runs SeaweedFS (Task 3), not the official MinIO
+            # sidecar the Caddyfile expects at that literal hostname.
+            - name: BUCKET_NAME
+              value: {{ .Values.env.awsS3BucketName | quote }}
+          resources:
+            {{- toYaml .Values.resources.proxy | nindent 12 }}
+          # TCP checks only, per this task's explicit probe requirement —
+          # Caddy exposes no dedicated unauthenticated health endpoint of
+          # its own in this configuration (the admin API on :2019 is not
+          # exposed here), so a plain TCP check on the app port is the
+          # correct signal that Caddy is up and listening.
+          readinessProbe:
+            tcpSocket:
+              port: proxy
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: proxy
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

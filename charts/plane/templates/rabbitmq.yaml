@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "plane.fullname" . }}-rabbitmq
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rabbitmq
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.rabbitmq.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.rabbitmq.host }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rabbitmq
+spec:
+  type: ClusterIP
+  ports:
+    - name: amqp
+      port: {{ .Values.rabbitmq.port }}
+      targetPort: amqp
+      protocol: TCP
+    - name: management
+      port: {{ .Values.rabbitmq.managementPort }}
+      targetPort: management
+      protocol: TCP
+  selector:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rabbitmq
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plane.fullname" . }}-rabbitmq
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rabbitmq
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plane.labels" . | nindent 6 }}
+      app.kubernetes.io/component: rabbitmq
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: "{{ .Values.image.rabbitmq.repository }}:{{ .Values.image.rabbitmq.tag }}@{{ .Values.image.rabbitmq.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Runs as root at startup by design: docker-entrypoint.sh chowns
+          # /var/lib/rabbitmq then drops to the rabbitmq user via su-exec
+          # itself (verified against the actual entrypoint script). Dropping
+          # all Linux capabilities would remove CAP_CHOWN/CAP_SETUID and
+          # break that drop, so only allowPrivilegeEscalation is disabled.
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - name: amqp
+              containerPort: {{ .Values.rabbitmq.port }}
+              protocol: TCP
+            - name: management
+              containerPort: {{ .Values.rabbitmq.managementPort }}
+              protocol: TCP
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: RABBITMQ_DEFAULT_USER
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: RABBITMQ_DEFAULT_PASS
+            - name: RABBITMQ_DEFAULT_VHOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: RABBITMQ_DEFAULT_VHOST
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+          resources:
+            {{- toYaml .Values.resources.rabbitmq | nindent 12 }}
+          readinessProbe:
+            exec:
+              command:
+                {{- toYaml .Values.probes.rabbitmq.exec.command | nindent 16 }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                {{- toYaml .Values.probes.rabbitmq.exec.command | nindent 16 }}
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "plane.fullname" . }}-rabbitmq
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

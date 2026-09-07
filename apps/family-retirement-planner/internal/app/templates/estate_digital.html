@@ -1,0 +1,87 @@
+{{define "estate_digital.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Digital asset metadata</h1>
+{{template "estate-disclaimer" .}}
+<div class="alert alert-danger">
+  <strong>Credential prohibition:</strong> {{.CredentialWarning}}
+</div>
+
+<div class="card">
+  <h2>Add metadata</h2>
+  <form method="post">
+    {{template "csrf" .}}
+    <div class="dashboard-grid">
+      <div class="form-group">
+        <label>Service or asset name
+          <input name="service_name" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Non-secret account identifier
+          <input name="account_identifier">
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Location of access instructions
+          <input name="access_instructions_location" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Non-secret notes
+          <textarea name="notes"></textarea>
+        </label>
+      </div>
+    </div>
+    <button type="submit">Add metadata</button>
+  </form>
+</div>
+
+<h2>Recorded metadata</h2>
+{{if .Items}}
+<ul class="card-list">
+  {{range .Items}}
+  <li class="card">
+    <form method="post" action="{{$.EstateBase}}/digital/{{.ID}}/update">
+      {{template "csrf" $}}
+      <div class="form-group">
+        <label>Service
+          <input name="service_name" value="{{.ServiceName}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Non-secret account identifier
+          <input name="account_identifier" value="{{.AccountIdentifier}}">
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Location of access instructions
+          <input name="access_instructions_location" value="{{.AccessInstructionsLocation}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Non-secret notes
+          <textarea name="notes">{{.Notes}}</textarea>
+        </label>
+      </div>
+      <button type="submit" class="outline button-block">Update</button>
+    </form>
+    
+    <div class="card-actions">
+      <form method="post" action="{{$.EstateBase}}/digital/{{.ID}}/delete">
+        {{template "csrf" $}}
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<div class="empty-state">
+  <p>No digital metadata recorded.</p>
+</div>
+{{end}}
+
+{{template "footer" .}}
+{{end}}

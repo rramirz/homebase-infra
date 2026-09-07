@@ -1,0 +1,74 @@
+{{define "dashboard.html"}}{{template "header" .}}
+<h1>Dashboard: {{.Plan.Name}}</h1>
+<div class="sub-nav">
+    {{range .Links}}<a href="{{.URL}}">{{.Name}}</a>{{end}}
+</div>
+
+<div class="dashboard-grid">
+    <div class="stat-box">
+        <h3>Data Completeness</h3>
+        <p class="stat-value">{{.Completeness}}%</p>
+        {{if .Missing}}
+        <ul class="help-text">
+            {{range .Missing}}<li>Missing/Unknown: {{.}}</li>{{end}}
+        </ul>
+        {{end}}
+    </div>
+
+    <div class="stat-box">
+        <h3>Readiness</h3>
+        <p class="stat-value">{{.Readiness}}</p>
+        <p class="help-text">{{.ReadinessReason}}</p>
+    </div>
+</div>
+
+<h2>Portfolio Projection (Liquid Assets)</h2>
+<div class="chart-container">
+    <svg viewBox="0 0 800 200" class="chart-svg">
+        <polyline points="{{.Points}}" />
+    </svg>
+</div>
+
+<div class="dashboard-grid">
+    <div class="stat-box">
+        <h3>Key Timeline Events</h3>
+        <ul class="event-list">
+        {{range .Years}}
+            {{range .Events}}<li><strong>{{.Year}}</strong>: <span class="status-label">{{.Kind}}</span> {{.Name}}</li>{{end}}
+        {{end}}
+        </ul>
+    </div>
+</div>
+
+<h2>Year Details</h2>
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Year</th>
+                <th>Starting</th>
+                <th>Income</th>
+                <th>Expenses</th>
+                <th>Withdrawals</th>
+                <th>Growth</th>
+                <th>Ending</th>
+                <th>Details</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Years}}
+            <tr>
+                <td>{{.Year}}</td>
+                <td>{{.StartingPortfolio}}</td>
+                <td>{{.Income}}</td>
+                <td>{{.Expenses}}</td>
+                <td>{{.Withdrawals}}</td>
+                <td>{{.Growth}}</td>
+                <td>{{.EndingPortfolio}}</td>
+                <td><a href="{{$.YearURL}}/{{.Year}}">View</a></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{template "footer" .}}{{end}}

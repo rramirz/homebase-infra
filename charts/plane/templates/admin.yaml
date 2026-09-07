@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Bare name, not release-derived: the official Plane Caddyfile (verified
+  # directly against the pinned makeplane/plane-proxy:v1.3.1 image's
+  # /etc/caddy/Caddyfile) hardcodes `reverse_proxy /god-mode/* admin:3000`
+  # as a literal upstream host. Must be named exactly `admin` for Task 5's
+  # Caddy to resolve it. Safe in this chart's dedicated `plane` namespace.
+  name: admin
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+spec:
+  type: ClusterIP
+  ports:
+    - name: admin
+      port: {{ .Values.ports.admin }}
+      targetPort: admin
+      protocol: TCP
+  selector:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plane.fullname" . }}-admin
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admin
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plane.labels" . | nindent 6 }}
+      app.kubernetes.io/component: admin
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: admin
+    spec:
+      containers:
+        # No command/args override: runs the pinned image's own default CMD
+        # (nginx -g "daemon off;", verified via `docker inspect`). Same
+        # fully static, build-time-baked SPA as web.yaml — its nginx.conf
+        # (verified inside the pinned image) has a single
+        # `server { listen 3000; }` block, no runtime env templating.
+        - name: admin
+          image: "{{ .Values.image.plane.repository }}/plane-admin:{{ .Values.image.plane.tag }}@{{ .Values.image.plane.digests.admin }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - name: admin
+              containerPort: {{ .Values.ports.admin }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources.admin | nindent 12 }}
+          # Plain TCP check per this task's probe contract (values.yaml
+          # probes.admin.tcp.port) — the admin console serves no dedicated
+          # health endpoint.
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.admin.tcp.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.admin.tcp.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

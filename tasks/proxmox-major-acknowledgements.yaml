@@ -1,0 +1,7 @@
+---
+- name: Require explicit backup and outage acknowledgement
+  ansible.builtin.assert:
+    that:
+      - backup_verified | bool
+      - outage_acknowledged | bool
+    fail_msg: Set backup_verified=true and outage_acknowledged=true only after completing the runbook preconditions.

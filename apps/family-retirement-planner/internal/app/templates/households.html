@@ -1,0 +1,34 @@
+{{define "households.html"}}{{template "header" .}}
+<h1>Households</h1>
+
+<div class="card card-spaced">
+    <h3 class="card-title">Create Household</h3>
+    <form class="inline" method="post">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="form-group form-group-flat">
+            <input name="name" placeholder="Household Name" required>
+        </div>
+        <button>Create</button>
+    </form>
+</div>
+
+<h2>Existing Households</h2>
+<ul class="card-list">
+{{range .Items}}
+    <li class="card">
+        <h3 class="card-title"><a href="/households/{{.ID}}">{{.Name}}</a></h3>
+    <div class="card-actions">
+        <form class="inline form-grow" method="post" action="/households/{{.ID}}/update">
+                <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input name="name" value="{{.Name}}" required>
+                <button class="outline">Rename</button>
+            </form>
+            <form class="inline" method="post" action="/households/{{.ID}}/archive">
+                <input type="hidden" name="csrf" value="{{$.CSRF}}">
+                <button class="danger">Archive</button>
+            </form>
+        </div>
+    </li>
+{{end}}
+</ul>
+{{template "footer" .}}{{end}}

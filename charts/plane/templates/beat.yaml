@@ -1,0 +1,180 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plane.fullname" . }}-beat
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: beat
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plane.labels" . | nindent 6 }}
+      app.kubernetes.io/component: beat
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: beat
+    spec:
+      # See api.yaml for why this init-container gate exists alongside the
+      # official entrypoint's own wait_for_migrations call.
+      initContainers:
+        - name: wait-for-migrations
+          image: "{{ .Values.image.postgres.repository }}:{{ .Values.image.postgres.tag }}@{{ .Values.image.postgres.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              i=0
+              until PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SELECT 1 FROM django_migrations LIMIT 1" 2>/dev/null | grep -q '^1$'; do
+                i=$((i + 1))
+                if [ "$i" -ge 120 ]; then
+                  echo "Timed out waiting for the initial Plane migration to complete" >&2
+                  exit 1
+                fi
+                echo "Waiting for initial migration ($i/120)..."
+                sleep 5
+              done
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: POSTGRES_HOST
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: POSTGRES_PORT
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: POSTGRES_PASSWORD
+      containers:
+        # Must override command: the image default CMD is the API entrypoint
+        # (gunicorn), not the beat script. Run the beat entrypoint so it does
+        # wait_for_db / wait_for_migrations then celery -A plane beat.
+        - name: beat
+          image: "{{ .Values.image.plane.repository }}/plane-backend:{{ .Values.image.plane.tag }}@{{ .Values.image.plane.digests.backend }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["./bin/docker-entrypoint-beat.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: SECRET_KEY
+            - name: AMQP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: AMQP_URL
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: REDIS_URL
+            - name: WEB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: WEB_URL
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: CORS_ALLOWED_ORIGINS
+            - name: USE_MINIO
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: USE_MINIO
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: AWS_REGION
+            - name: AWS_S3_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: AWS_S3_ENDPOINT_URL
+            - name: AWS_S3_BUCKET_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: AWS_S3_BUCKET_NAME
+            - name: FILE_SIZE_LIMIT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: FILE_SIZE_LIMIT
+          resources:
+            {{- toYaml .Values.resources.beat | nindent 12 }}
+          # No HTTP port is exposed by the celery beat process; check the
+          # actual process is running via its real command line (verified
+          # against the pinned image: `celery -A plane beat -l info`).
+          readinessProbe:
+            exec:
+              command: ["pgrep", "-f", "celery -A plane beat"]
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pgrep", "-f", "celery -A plane beat"]
+            initialDelaySeconds: 40
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

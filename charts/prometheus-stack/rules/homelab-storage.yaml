@@ -138,6 +138,27 @@ spec:
           annotations:
             summary: "prometheus-pve-exporter on files (192.168.1.216) is down"
 
+    - name: homelab-storage.infra
+      rules:
+        - alert: InfraHostDown
+          expr: up{job="node-external",instance="192.168.1.28"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: proxmox
+          annotations:
+            summary: "Proxmox host infra (192.168.1.28) is down"
+            description: "node-exporter on pve-2/infra has been unreachable for 5 minutes. This host runs the primary K8s control plane and three worker VMs."
+
+        - alert: InfraPveExporterDown
+          expr: up{job="pve",instance="192.168.1.28"} == 0
+          for: 10m
+          labels:
+            severity: warning
+            component: proxmox
+          annotations:
+            summary: "prometheus-pve-exporter on infra (192.168.1.28) is down"
+
     - name: homelab-storage.sync
       rules:
         - alert: SyncStorageAlmostFull

@@ -1,0 +1,88 @@
+{{define "estate_result.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Persisted estate scenario result</h1>
+{{template "estate-disclaimer" .}}
+
+<div class="card mb-xl">
+  <div class="flex-between-wrap">
+    <div>
+      <h2 class="m-0 border-none p-0">{{.Run.ScenarioName}}</h2>
+      <p class="text-muted mt-xs-only">
+        Decedent: <strong>{{.Run.DecedentName}}</strong> &middot; As of: {{.Run.AsOfYear}} &middot; Death year: {{.Run.DeathYear}} &middot; Run: {{.Run.CreatedAt}}
+      </p>
+    </div>
+    <a href="{{.EstateBase}}/results/{{.Run.ID}}/print" target="_blank" class="button outline btn-print" >Open print view</a>
+  </div>
+</div>
+
+<div class="dashboard-grid">
+  <div class="stat-box">
+    <h3>Gross modeled assets &amp; insurance</h3>
+    <div class="stat-value">${{.Run.Result.GrossEstate}}</div>
+  </div>
+  <div class="stat-box">
+    <h3>Probate estate</h3>
+    <div class="stat-value">${{.Run.Result.ProbateEstate}}</div>
+  </div>
+  <div class="stat-box">
+    <h3>Entered obligations</h3>
+    <div class="stat-value">${{.Run.Result.Obligations}}</div>
+  </div>
+  <div class="stat-box">
+    <h3>Net residuary estate</h3>
+    <div class="stat-value text-success">${{.Run.Result.NetEstate}}</div>
+  </div>
+</div>
+
+{{if .Run.Result.LiquidityWarning}}
+<div class="alert mb-xl">
+  <strong>Liquidity warning:</strong> Modeled liquid probate assets are short by ${{.Run.Result.LiquidityShortfall}} versus entered obligations.
+</div>
+{{end}}
+{{if .Run.Result.Insolvent}}
+<div class="alert alert-danger">
+  <strong>Solvency warning:</strong> Entered obligations exceed modeled probate assets.
+</div>
+{{end}}
+
+<h2>Obligation details</h2>
+<div class="table-responsive"><table><thead><tr><th>Kind</th><th>Amount</th><th>Included</th></tr></thead><tbody>{{range .Run.Result.ObligationDetails}}<tr><td>{{.Kind}}</td><td>${{.Amount}}</td><td>{{.Included}}</td></tr>{{end}}</tbody></table></div>
+
+<h2>Designation tier readiness</h2>
+<div class="table-responsive"><table><thead><tr><th>Record</th><th>Tier</th><th>Total</th><th>Recorded</th><th>Complete</th></tr></thead><tbody>{{range .Run.Result.DesignationTiers}}<tr><td>{{.Source}}</td><td>{{.Tier}}</td><td>{{.Total}}</td><td>{{.Recorded}}</td><td>{{.Complete}}</td></tr>{{end}}</tbody></table></div>
+
+<h2>Readiness at run time</h2>
+<div class="table-responsive"><table><thead><tr><th>Item</th><th>Status</th><th>Reason</th></tr></thead><tbody>{{range .Run.Result.Readiness}}<tr><td>{{.Label}}</td><td>{{.Status}}</td><td>{{.Reason}}</td></tr>{{end}}</tbody></table></div>
+
+<h2 class="mt-xxl">Eight-stage event ledger</h2>
+<p class="help-text mb-md">A step-by-step account of how assets are distributed and obligations are paid.</p>
+
+<div class="table-responsive">
+  <table>
+    <thead>
+      <tr>
+        <th class="w-15">Stage</th>
+        <th class="w-25">Source</th>
+        <th class="w-25">Target</th>
+        <th class="w-15">Amount</th>
+        <th class="w-20">Explanation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Run.Result.Events}}
+      <tr>
+        <td class="text-secondary font-medium">{{.Stage}}</td>
+        <td>{{.Source}}</td>
+        <td>{{.Target}}</td>
+        <td class="font-serif-lg">${{.Amount}}</td>
+        <td class="text-secondary text-sm">{{.Note}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+
+{{template "footer" .}}
+{{end}}

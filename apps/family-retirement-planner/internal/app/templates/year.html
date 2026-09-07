@@ -1,0 +1,49 @@
+{{define "year.html"}}{{template "header" .}}
+<h1>Year {{.Year.Year}}</h1>
+
+<div class="sub-nav">
+    <a href="{{.Back}}">&larr; Back to projection</a>
+</div>
+
+<div class="dashboard-grid">
+    <div class="stat-box">
+        <h3>Cash Flow</h3>
+        <ul class="event-list">
+            <li><strong>Income:</strong> {{.Year.Income}}</li>
+            <li><strong>Expenses:</strong> {{.Year.Expenses}}</li>
+            <li><strong>Debt Paid:</strong> {{.Year.DebtPaid}}</li>
+            <li><strong>Growth:</strong> {{.Year.Growth}}</li>
+        </ul>
+    </div>
+    
+    <div class="stat-box">
+        <h3>Balances</h3>
+        <ul class="event-list">
+            <li><strong>Cash:</strong> {{.Year.Cash}}</li>
+            <li><strong>Taxable:</strong> {{.Year.Taxable}}</li>
+            <li><strong>Tax-Deferred:</strong> {{.Year.TaxDeferred}}</li>
+            <li><strong>Roth:</strong> {{.Year.Roth}}</li>
+        </ul>
+    </div>
+</div>
+
+<h2>Timeline Events</h2>
+<div class="card card-spaced">
+    <ul class="event-list">
+        {{range .Year.Events}}
+        <li><span class="status-label">{{.Kind}}</span> {{.Name}}</li>
+        {{else}}
+        <li><span class="text-muted">None this year.</span></li>
+        {{end}}
+    </ul>
+</div>
+
+<h2>Ages</h2>
+<div class="card">
+    <ul class="event-list">
+        {{range $n,$a:=.Year.Ages}}
+        <li><strong>{{$n}}:</strong> {{$a}}</li>
+        {{end}}
+    </ul>
+</div>
+{{template "footer" .}}{{end}}

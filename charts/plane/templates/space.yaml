@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Bare name, not release-derived: the official Plane Caddyfile (verified
+  # directly against the pinned makeplane/plane-proxy:v1.3.1 image's
+  # /etc/caddy/Caddyfile) hardcodes `reverse_proxy /spaces/* space:3000` as
+  # a literal upstream host. Must be named exactly `space` for Task 5's
+  # Caddy to resolve it. Safe in this chart's dedicated `plane` namespace.
+  name: space
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: space
+spec:
+  type: ClusterIP
+  ports:
+    - name: space
+      port: {{ .Values.ports.space }}
+      targetPort: space
+      protocol: TCP
+  selector:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: space
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plane.fullname" . }}-space
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: space
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plane.labels" . | nindent 6 }}
+      app.kubernetes.io/component: space
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: space
+    spec:
+      containers:
+        # No command/args override: runs the pinned image's own default CMD
+        # (npx react-router-serve ./build/server/index.js, verified via
+        # `docker inspect`). PORT is required here (unlike live, which
+        # defaults to 3000): verified against the pinned image that
+        # react-router-serve's own CLI falls back to the `get-port` library
+        # (`await getPort({ port: 3000 })`, which returns a *different* free
+        # port if 3000 is ever taken) when PORT is unset, so this container
+        # must pin PORT explicitly to stay deterministic and match the
+        # probe/Service port below.
+        - name: space
+          image: "{{ .Values.image.plane.repository }}/plane-space:{{ .Values.image.plane.tag }}@{{ .Values.image.plane.digests.space }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - name: space
+              containerPort: {{ .Values.ports.space }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.ports.space | quote }}
+          resources:
+            {{- toYaml .Values.resources.space | nindent 12 }}
+          # Plain TCP check per this task's probe contract (values.yaml
+          # probes.space.tcp.port) — space serves no dedicated health
+          # endpoint.
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.space.tcp.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.space.tcp.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,98 @@
+---
+- name: Reset canonical source policy accumulators
+  ansible.builtin.set_fact:
+    source_policy_unsupported_active_sources: []
+    source_policy_noncanonical_active_sources: []
+    source_policy_active_pve_source_files: []
+
+- name: Check whether generated PVE enterprise deb822 source exists
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/pve-enterprise.sources
+  register: generated_pve_enterprise_source
+
+- name: Create generated enterprise source backup directory
+  ansible.builtin.file:
+    path: "/root/proxmox-major-upgrade-{{ ansible_date_time.iso8601_basic_short }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  when:
+    - cleanup_generated_pve_enterprise_source | default(false) | bool
+    - generated_pve_enterprise_source.stat.exists
+
+- name: Preserve generated enterprise source before deterministic cleanup
+  ansible.builtin.copy:
+    src: /etc/apt/sources.list.d/pve-enterprise.sources
+    dest: "/root/proxmox-major-upgrade-{{ ansible_date_time.iso8601_basic_short }}/pve-enterprise.sources"
+    remote_src: true
+    force: false
+    mode: '0600'
+  when:
+    - cleanup_generated_pve_enterprise_source | default(false) | bool
+    - generated_pve_enterprise_source.stat.exists
+
+- name: Disable regenerated PVE enterprise deb822 source deterministically
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-enterprise.sources
+    content: "{{ transition.disabled_pve_source_content }}"
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - cleanup_generated_pve_enterprise_source | default(false) | bool
+    - generated_pve_enterprise_source.stat.exists
+
+- name: Find apt source files for canonical source policy
+  ansible.builtin.find:
+    paths: [/etc/apt]
+    patterns: ['*.list', '*.sources']
+    recurse: true
+    file_type: file
+  register: source_policy_files
+
+- name: Read apt source files for canonical source policy
+  ansible.builtin.slurp:
+    src: '{{ item.path }}'
+  loop: '{{ source_policy_files.files }}'
+  register: source_policy_contents
+
+- name: Identify unsupported active source files under canonical source policy
+  ansible.builtin.set_fact:
+    source_policy_unsupported_active_sources: "{{ (source_policy_unsupported_active_sources | default([])) + [item.item.path] }}"
+  loop: '{{ source_policy_contents.results }}'
+  when:
+    - item.item.path not in transition.allowed_source_files
+    - (item.content | b64decode) is search('(?m)^\s*(deb |URIs:)')
+
+- name: Identify active noncanonical allowlisted source files under canonical source policy
+  ansible.builtin.set_fact:
+    source_policy_noncanonical_active_sources: "{{ (source_policy_noncanonical_active_sources | default([])) + [item.item.path] }}"
+  loop: '{{ source_policy_contents.results }}'
+  when:
+    - item.item.path not in ['/etc/apt/sources.list', '/etc/apt/sources.list.d/pve-no-subscription.list']
+    - (item.content | b64decode) is search('(?m)^\s*(deb |URIs:)')
+
+- name: Identify active Proxmox PVE source files under canonical source policy
+  ansible.builtin.set_fact:
+    source_policy_active_pve_source_files: "{{ (source_policy_active_pve_source_files | default([])) + [item.item.path] }}"
+  loop: '{{ source_policy_contents.results }}'
+  when: (item.content | b64decode) is search('(?m)^\s*(deb |URIs:).*proxmox\.com/debian/pve')
+
+- name: Read canonical Debian and PVE source files
+  ansible.builtin.slurp:
+    src: '{{ item }}'
+  loop: [/etc/apt/sources.list, /etc/apt/sources.list.d/pve-no-subscription.list]
+  register: source_policy_canonical_sources
+
+- name: Require exact canonical source policy
+  ansible.builtin.assert:
+    that:
+      - source_policy_unsupported_active_sources | default([]) | length == 0
+      - source_policy_noncanonical_active_sources | default([]) | length == 0
+      - source_policy_active_pve_source_files | default([]) == ['/etc/apt/sources.list.d/pve-no-subscription.list']
+      - (source_policy_canonical_sources.results | selectattr('item', 'equalto', '/etc/apt/sources.list') | map(attribute='content') | first | b64decode) == transition.target_debian_sources
+      - (source_policy_canonical_sources.results | selectattr('item', 'equalto', '/etc/apt/sources.list.d/pve-no-subscription.list') | map(attribute='content') | first | b64decode) == transition.pve_no_subscription_source ~ '\n'
+    fail_msg: >-
+      Canonical source policy requires exact trixie Debian and pve-no-subscription content, no active
+      enterprise PVE source, and no unknown or noncanonical active source files.

@@ -208,13 +208,19 @@ zfs_pool_free_bytes{pool="home-storage"} / 1024^4
   not a hardcoded UID or Grafana's `__inputs`/`DS_PROMETHEUS` export convention
   — that's what the sidecar actually resolves here.
 - **Townhome tunnel dashboard**: `charts/prometheus-stack/dashboards/townhome-traffic.yaml`
-  intentionally combines two sources: blackbox `job="blackbox-townhome"` for
-  public Cloudflare Tunnel edge availability/TLS/latency, and
-  `townhome_http_*` nginx-log-exporter metrics for origin-side per-host request
-  rate/status/latency/bytes. cloudflared itself is not scraped here and would
-  only provide shared tunnel-level metrics, not per-host traffic.
-- **Retention**: Prometheus keeps `120h` (5 days) at
-  `prometheus.prometheusSpec.retention` in `values.yaml`. Bump if needed.
+   intentionally combines two sources: blackbox `job="blackbox-townhome"` for
+   public Cloudflare Tunnel edge availability/TLS/latency, and
+   `townhome_http_*` nginx-log-exporter metrics for origin-side per-host request
+   rate/status/latency/bytes. The owner view shows production Site health,
+   Visitors today/yesterday, finalized daily visitor samples, and health
+   history; the original technical panels remain under collapsed Diagnostics.
+   Visitor values are distinct client IPs per UTC day, not exact people, and
+   finalized daily history is reported one day later. cloudflared itself is not
+   scraped here and would only provide shared tunnel-level metrics, not
+   per-host traffic.
+- **Retention**: Prometheus keeps `3d` at
+   `prometheus.prometheusSpec.retention` in `values.yaml`. Alertmanager
+   separately uses `120h` retention. Bump either if needed.
 - **Adding a ServiceMonitor/PodMonitor for your own app** (2026-07-02,
   discovered wiring up `townhome-listing` traffic metrics): the live
   Prometheus CR's `serviceMonitorSelector`/`podMonitorSelector` are

@@ -84,3 +84,7 @@ __pycache__/
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.*
+/.sisyphus
+/charts/.playwright-mcp
+/.playwright-mcp
+/charts/home-assistant/.omo/run-continuation

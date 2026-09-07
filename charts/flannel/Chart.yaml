@@ -1,0 +1,10 @@
+apiVersion: v2
+name: flannel
+description: Official Flannel CNI chart for the home Kubernetes cluster
+type: application
+version: 0.1.0
+appVersion: "v0.28.9"
+dependencies:
+  - name: flannel
+    repository: https://flannel-io.github.io/flannel
+    version: v0.28.9

@@ -1,0 +1,187 @@
+# Plane CE disposable pilot — committed, non-secret values.
+#
+# DISPOSABLE PILOT / NO REAL DATA: this chart deploys a throwaway Plane
+# instance backed only by local OpenEBS `ssd` PVCs. There is no off-cluster
+# backup/restore path yet. Do not create real workspaces, tasks, or store any
+# employer/production data here until backup and restore are implemented and
+# tested (see .sisyphus/ACTIVE_PLAN.md Task 7/8). Deleting the namespace or
+# PVCs destroys all pilot state permanently.
+disposablePilot: true
+
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: plane
+
+domains:
+  web: plane.theramirez.casa
+  s3: s3.theramirez.casa
+
+storageClassName: ssd
+
+image:
+  pullPolicy: IfNotPresent
+  # Digests below are copied verbatim from charts/plane/image-lock.yaml
+  # (Task 1). Never move these images to `latest` or a mutable tag alone.
+  plane:
+    repository: makeplane
+    tag: v1.3.1
+    digests:
+      backend: sha256:2cdcb5f778c6ccacebce0e5a751d39fac4a549a44e049a5b110a7623cfdad139
+      frontend: sha256:c178fd85c4588165262cfe748bd103fdeccebbbab827c53e71b9ce32fff84f86
+      space: sha256:e08c2c8741ae6f81a9326dc9201e7e09c0c411b87a20198f9ea9e5cf2fae3488
+      admin: sha256:ff9219127a2c2c4a4bb066d6a0e25a5fc6a11204cf8484b521dada53d696fe43
+      live: sha256:2073b6950a394545ea1db6ed4157e951ad5a6e1881e74f4f9238ace6c35bbf3d
+      proxy: sha256:b4f8bb6998052dcd1488171a90d473674cefbc6ec77114d5095b48c805f4ad27
+  postgres:
+    repository: postgres
+    tag: 15.7-alpine
+    digest: sha256:468d34fefd6338031787c7b8e94078975b3aaf4d66c7ead25c39cd3ba46a15c6
+  valkey:
+    repository: valkey/valkey
+    tag: 7.2.11-alpine
+    digest: sha256:10328d00120dc14fbc87b2ed61b7677ddbb0d011e705361b4788329a0ec69a93
+  rabbitmq:
+    repository: rabbitmq
+    tag: 3.13.6-management-alpine
+    digest: sha256:611107e29cce05c2acd968325d5dcbde7e2fee404970f1ead75fdb22be2821b3
+  seaweedfs:
+    repository: chrislusf/seaweedfs
+    tag: "4.39"
+    digest: sha256:c7d6c721b30ae711db766bbbfd40192776e263d4e51e22f57baef7bef93c12c6
+
+# Non-secret service topology. Credentials for these hosts live in
+# secret-values.yaml (gitignored), never here.
+postgres:
+  host: plane-postgres
+  port: 5432
+  db: plane
+  storageSize: 5Gi
+
+rabbitmq:
+  host: plane-rabbitmq
+  port: 5672
+  managementPort: 15672
+  vhost: plane
+  storageSize: 2Gi
+
+valkey:
+  host: plane-valkey
+  port: 6379
+  storageSize: 2Gi
+
+seaweedfs:
+  host: plane-seaweedfs
+  s3Port: 8333
+  masterPort: 9333
+  volumePort: 8080
+  filerPort: 8888
+  storageSize: 10Gi
+  bucket: plane-uploads
+
+# Plane application container ports (matches upstream Plane CE
+# docker-compose; the proxy image's baked-in routing config expects these
+# service names/ports, so keep them stable).
+ports:
+  api: 8000
+  web: 3000
+  space: 3000
+  admin: 3000
+  live: 3000
+  proxy: 80
+
+# Non-secret Plane application configuration (ConfigMap-backed).
+env:
+  webUrl: https://plane.theramirez.casa
+  corsAllowedOrigins: https://plane.theramirez.casa
+  useMinio: "0"
+  awsRegion: homebase
+  awsS3EndpointUrl: https://s3.theramirez.casa
+  awsS3BucketName: plane-uploads
+  fileSizeLimit: "5242880"
+
+# Probe strategy per component (consumed by Task 3/4 workload templates).
+# Only Plane's documented HTTP probes are used (API `/`, live `/live/health/`);
+# everything else uses TCP or process/exec checks.
+#
+# live's health route is mounted under the pinned image's own default
+# LIVE_BASE_PATH ("/live", verified against the pinned makeplane/plane-live
+# image's dist/start.mjs), unmodified — matching the official Caddy
+# contract's `reverse_proxy /live/* live:3000` upstream exactly. An earlier
+# revision of this chart set LIVE_BASE_PATH="" to force a bare `/health/`
+# path; that was reverted because it diverged from the pinned image's own
+# default and from the official proxy's routing contract for no benefit.
+probes:
+  api:
+    http:
+      path: /
+      port: api
+  live:
+    http:
+      path: /live/health/
+      port: live
+  web:
+    tcp:
+      port: web
+  space:
+    tcp:
+      port: space
+  admin:
+    tcp:
+      port: admin
+  postgres:
+    exec:
+      command: ["pg_isready", "-U", "$(POSTGRES_USER)"]
+  valkey:
+    exec:
+      command: ["valkey-cli", "PING"]
+  rabbitmq:
+    exec:
+      command: ["rabbitmq-diagnostics", "-q", "ping"]
+  seaweedfs:
+    tcp:
+      port: s3
+
+# Resource requests/limits per component. Steady-state totals must stay
+# below 3 CPU / 10 GiB requested (see .sisyphus/ACTIVE_PLAN.md constraints).
+resources:
+  api:
+    requests: { cpu: 200m, memory: 384Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  worker:
+    requests: { cpu: 150m, memory: 512Mi }
+    limits: { cpu: 400m, memory: 768Mi }
+  beat:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+  web:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+  space:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+  admin:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+  live:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: 300m, memory: 256Mi }
+  proxy:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }
+  postgres:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 500m, memory: 1Gi }
+  valkey:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+  rabbitmq:
+    requests: { cpu: 150m, memory: 256Mi }
+    limits: { cpu: 400m, memory: 512Mi }
+  seaweedfs:
+    requests: { cpu: 150m, memory: 256Mi }
+    limits: { cpu: 400m, memory: 512Mi }
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

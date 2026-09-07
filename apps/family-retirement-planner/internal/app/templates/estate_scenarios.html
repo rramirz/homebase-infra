@@ -1,0 +1,162 @@
+{{define "estate_scenarios.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Residuary plan, scenarios, and results</h1>
+{{template "estate-disclaimer" .}}
+
+<div class="dashboard-grid">
+  <div class="card">
+    <h2>Residuary shares</h2>
+    <p class="help-text">Shares must total exactly 1.0 before a scenario can run.</p>
+    <form method="post" action="{{.EstateBase}}/residuary">
+      {{template "csrf" .}}
+      <div class="form-group">
+        <label>Beneficiary</label>
+        {{template "beneficiary-select" .}}
+      </div>
+      <div class="form-group">
+        <label>Share (enter as decimal 0–1, e.g. 0.5)
+          <input name="share_percent" value="1" required>
+        </label>
+      </div>
+      <button type="submit">Add or update share</button>
+    </form>
+    <ul class="event-list mt-md">
+      {{range .Residuary}}
+      <li>
+        {{.BeneficiaryName}} &mdash; {{.SharePercent}}
+        <form class="inline float-right" method="post" action="{{$.EstateBase}}/residuary/{{.ID}}/delete">
+          {{template "csrf" $}}
+          <button type="submit" class="danger">Remove</button>
+        </form>
+      </li>
+      {{else}}
+      <li class="text-muted">No residuary shares recorded.</li>
+      {{end}}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Add death scenario</h2>
+    <form method="post">
+      {{template "csrf" .}}
+      <div class="form-group">
+        <label>Scenario name
+          <input name="name" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Decedent name
+          <input name="decedent_name" required>
+        </label>
+      </div>
+      <div class="form-group"><label>As-of year<input name="as_of_year" value="2026" required></label></div>
+      <div class="form-group"><label>Death year<input name="death_year" value="2026" required></label></div>
+      <div class="form-group">
+        <label>Entered debts and final obligations
+          <input name="debt" inputmode="decimal" value="0" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Funeral costs
+          <input name="funeral_cost" inputmode="decimal" value="0" required>
+        </label>
+      </div>
+      <div class="form-group"><label>Legal and administration costs<input name="legal_cost" inputmode="decimal" value="0" required></label></div>
+      <div class="form-group"><label><input class="checkbox" type="checkbox" name="pay_debts" value="true" checked> Include entered debts in obligations</label></div>
+      <button type="submit">Add scenario</button>
+    </form>
+  </div>
+</div>
+
+<h2>Recorded Scenarios</h2>
+{{if .Items}}
+  <div class="card-list">
+  {{range .Items}}
+  <article class="card card-spaced">
+    <form method="post" action="{{$.EstateBase}}/scenarios/{{.ID}}/update">
+      {{template "csrf" $}}
+      <div class="form-group">
+        <label>Name
+          <input name="name" value="{{.Name}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Decedent
+          <input name="decedent_name" value="{{.DecedentName}}" required>
+        </label>
+      </div>
+      <div class="form-group"><label>As-of year<input name="as_of_year" value="{{.AsOfYear}}" required></label></div>
+      <div class="form-group"><label>Death year<input name="death_year" value="{{.DeathYear}}" required></label></div>
+      <div class="form-group">
+        <label>Debts/obligations
+          <input name="debt" value="{{.Debt}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Funeral costs
+          <input name="funeral_cost" value="{{.FuneralCost}}" required>
+        </label>
+      </div>
+      <div class="form-group"><label>Legal and administration costs<input name="legal_cost" value="{{.LegalCost}}" required></label></div>
+      <div class="form-group"><label><input class="checkbox" type="checkbox" name="pay_debts" value="true" {{if .PayDebts}}checked{{end}}> Include entered debts in obligations</label></div>
+      <button type="submit" class="outline button-block">Update scenario</button>
+    </form>
+    
+    <hr class="hr-spaced">
+    
+    <div class="card-actions card-actions-between">
+      <form method="post" action="{{$.EstateBase}}/scenarios/{{.ID}}/run" class="m-0">
+        {{template "csrf" $}}
+        <button type="submit">Run deterministic scenario</button>
+      </form>
+      <form method="post" action="{{$.EstateBase}}/scenarios/{{.ID}}/delete" class="m-0">
+        {{template "csrf" $}}
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </div>
+  </article>
+  {{end}}
+  </div>
+{{else}}
+  <div class="empty-state mb-xxl">
+    <p>No scenarios recorded. Add a scenario to begin modeling.</p>
+  </div>
+{{end}}
+
+<h2>Persisted results</h2>
+{{if .Results}}
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Scenario</th>
+          <th>Decedent</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Results}}
+        <tr>
+          <td class="text-secondary">{{.CreatedAt}}</td>
+          <td><strong>{{.ScenarioName}}</strong></td>
+          <td>{{.DecedentName}}</td>
+          <td>
+            <a href="{{$.EstateBase}}/results/{{.ID}}">Inspect</a> &middot; 
+            <a href="{{$.EstateBase}}/results/{{.ID}}/print" target="_blank">Print view</a>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+{{else}}
+  <div class="empty-state">
+    <p>No results yet. Run a scenario to see the outcome.</p>
+  </div>
+{{end}}
+
+{{template "footer" .}}
+{{end}}

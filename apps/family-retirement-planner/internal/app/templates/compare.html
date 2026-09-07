@@ -1,0 +1,31 @@
+{{define "compare.html"}}{{template "header" .}}
+<h1>Compare Scenarios: {{.Plan.Name}}</h1>
+<div class="sub-nav">
+    {{range .Links}}<a href="{{.URL}}">{{.Name}}</a>{{end}}
+</div>
+
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Scenario</th>
+                <th>Return</th>
+                <th>Inflation</th>
+                <th>Ending Assets</th>
+                <th>Depletion Year</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Rows}}
+            <tr>
+                <td><strong>{{.Name}}</strong></td>
+                <td>{{.AnnualReturn}}</td>
+                <td>{{.Inflation}}</td>
+                <td>{{.EndingAssets}}</td>
+                <td><span class="status-label">{{if gt .DepletionYear 0}}{{.DepletionYear}}{{else}}Never{{end}}</span></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{template "footer" .}}{{end}}

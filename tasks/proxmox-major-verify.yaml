@@ -1,0 +1,88 @@
+---
+- name: Read installed Proxmox version
+  ansible.builtin.command:
+    argv: [pveversion]
+  changed_when: false
+  register: pveversion_result
+
+- name: Read running kernel release
+  ansible.builtin.command:
+    argv: [uname, -r]
+  changed_when: false
+  register: kernel_release
+
+- name: List installed target Proxmox packages
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, '-f=${binary:Package} ${Version} ${Status}\n', proxmox-ve, pve-manager, proxmox-default-kernel, proxmox-kernel-helper, 'proxmox-kernel-*']
+  changed_when: false
+  register: target_kernel_packages
+
+- name: Audit dpkg package state
+  ansible.builtin.command:
+    argv: [dpkg, --audit]
+  changed_when: false
+  register: dpkg_audit
+
+- name: Require concrete signed target kernel package and boot image after reboot
+  ansible.builtin.include_tasks: tasks/proxmox-major-kernel-proof.yaml
+  vars:
+    target_kernel_package_status: '{{ target_kernel_packages }}'
+
+- name: Require canonical source policy after reboot
+  ansible.builtin.include_tasks: tasks/proxmox-major-source-policy.yaml
+
+- name: Check core Proxmox services
+  ansible.builtin.command:
+    argv: [systemctl, is-active, '{{ item }}']
+  changed_when: false
+  loop: [pveproxy, pvedaemon, pvestatd]
+  register: pve_services
+
+- name: Read Proxmox storage status
+  ansible.builtin.command:
+    argv: [pvesm, status]
+  changed_when: false
+  register: storage_status
+
+- name: Read guest inventory
+  ansible.builtin.command:
+    argv: [pvesh, get, /cluster/resources, '--type', vm, '--output-format', json]
+  changed_when: false
+  register: guest_inventory
+
+- name: Read one-node cluster quorum status on pve-2
+  ansible.builtin.command:
+    argv: [pvecm, status]
+  changed_when: false
+  register: cluster_status
+  when: inventory_hostname == 'pve-2'
+
+- name: Assert target platform health
+  ansible.builtin.assert:
+    that:
+      - pveversion_result.stdout is match('^pve-manager/' ~ transition.target_pve_major ~ '\\.')
+      - ansible_distribution_release == transition.target_debian_codename
+      - kernel_release.stdout is match(transition.target_kernel_release_regex)
+      - target_kernel_packages.stdout_lines | select('match', '^proxmox-ve[ ]+9[.].*install ok installed$') | list | length > 0
+      - target_kernel_packages.stdout_lines | select('match', '^pve-manager[ ]+9[.].*install ok installed$') | list | length > 0
+      - target_concrete_kernel_releases | length > 0
+      - target_kernel_packages.stdout_lines | select('match', '^proxmox-default-kernel[ ]+.*install ok installed$') | list | length > 0
+      - target_kernel_packages.stdout_lines | select('match', '^proxmox-kernel-helper[ ]+.*install ok installed$') | list | length > 0
+      - dpkg_audit.stdout | trim == ''
+      - pve_services.results | map(attribute='stdout') | select('equalto', 'active') | list | length == 3
+      - storage_status.stdout_lines | select('search', '\\sinactive\\s') | list | length == 0
+      - inventory_hostname != 'pve-2' or cluster_status.stdout is search('(?m)^Quorate:\\s+Yes$')
+      - inventory_hostname != 'pve-1' or pve_services.results | map(attribute='stdout') | select('equalto', 'active') | list | length == 3
+    fail_msg: >-
+      Target verification failed. Inspect pveversion, Debian version, running and installed target kernels,
+      services, dpkg audit, and storage before restoring guest workloads.
+
+- name: Report read-only post-upgrade state
+  ansible.builtin.debug:
+    msg:
+      pveversion: '{{ pveversion_result.stdout }}'
+      debian_codename: '{{ ansible_distribution_release }}'
+      kernel: '{{ kernel_release.stdout }}'
+      installed_target_kernels: '{{ target_kernel_packages.stdout_lines }}'
+      storage: '{{ storage_status.stdout_lines }}'
+      guests: '{{ guest_inventory.stdout | from_json }}'

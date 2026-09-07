@@ -1,0 +1,29 @@
+---
+- name: Require resume acknowledgements
+  ansible.builtin.include_tasks: tasks/proxmox-major-acknowledgements.yaml
+
+- name: Require explicit resume confirmation
+  ansible.builtin.assert:
+    that: resume_confirmed | bool
+    fail_msg: Set RESUME_CONFIRMED=true only after confirming a source-rewrite failure and recovery plan.
+
+- name: Clean known generated source and require canonical source policy before resume
+  ansible.builtin.include_tasks: tasks/proxmox-major-source-policy.yaml
+  vars:
+    cleanup_generated_pve_enterprise_source: true
+
+- name: Audit dpkg package state before resume
+  ansible.builtin.command:
+    argv: [dpkg, --audit]
+  changed_when: false
+  register: resume_dpkg_audit
+
+- name: Require clean dpkg state before resume
+  ansible.builtin.assert:
+    that: resume_dpkg_audit.stdout | trim == ''
+    fail_msg: >-
+      Resume refuses an unclean dpkg state. Complete manual dpkg recovery before running this phase;
+      this automation does not guess at interrupted package recovery.
+
+- name: Complete guarded target resume upgrade
+  ansible.builtin.include_tasks: tasks/proxmox-major-target-upgrade.yaml

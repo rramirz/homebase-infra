@@ -6,7 +6,7 @@ app-template:
         main:
           image:
             repository: lscr.io/linuxserver/radarr
-            tag: 6.1.1
+            tag: 6.3.0
             pullPolicy: IfNotPresent
           env:
             TZ: America/New_York

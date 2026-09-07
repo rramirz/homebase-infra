@@ -1,0 +1,30 @@
+{{define "header"}}<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Family Retirement Planner</title>
+    <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+    <header class="site-header">
+        <h1>Family Retirement Planner</h1>
+        <nav class="site-nav">
+            <a href="/households">Households</a>
+            {{if .Household}}
+                <a href="/households/{{.Household}}">Dashboard</a>
+                <a href="/households/{{.Household}}/estate/">Estate</a>
+            {{end}}
+            <form class="inline" method="post" action="/logout">
+                <input type="hidden" name="csrf" value="{{.CSRF}}">
+                <button class="outline">Logout</button>
+            </form>
+        </nav>
+    </header>
+    <main class="container">
+{{end}}
+{{define "footer"}}
+</main>
+</body>
+</html>
+{{end}}

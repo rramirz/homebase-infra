@@ -1,0 +1,78 @@
+{{define "plans.html"}}{{template "header" .}}
+<h1>{{.Title}}</h1>
+<div class="sub-nav">
+    {{range .Links}}<a href="{{.URL}}">{{.Name}}</a>{{end}}
+</div>
+
+<h2>Create New Plan</h2>
+<form method="post">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="dashboard-grid">
+        <div class="form-group">
+            <label>Name</label>
+            <input name="name" required>
+        </div>
+        <div class="form-group">
+            <label>As Of Year</label>
+            <input name="as_of_year" required>
+        </div>
+        <div class="form-group">
+            <label>End Year</label>
+            <input name="end_year" required>
+        </div>
+        <div class="form-group">
+            <label>Annual Return</label>
+            <input name="annual_return" required>
+        </div>
+        <div class="form-group">
+            <label>Inflation</label>
+            <input name="inflation" required>
+        </div>
+        <div class="form-group">
+            <label>Confidence</label>
+            <select name="confidence">
+                <option value="unknown">Unknown</option>
+                <option value="estimated">Estimated</option>
+                <option value="verified">Verified</option>
+            </select>
+        </div>
+    </div>
+    <button>Add Plan</button>
+</form>
+
+<h2>Existing Plans</h2>
+<ul class="card-list">
+{{range .Items}}
+    <li class="card">
+        <h3 class="card-title">{{.Name}}</h3>
+        <form method="post" action="/households/{{$.HouseholdID}}/plans/{{.ID}}/update">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <div class="form-group">
+                <label>Name</label>
+                <input name="name" value="{{.Name}}" required>
+            </div>
+            <div class="form-group">
+                <label>As Of Year</label>
+                <input name="as_of_year" value="{{.AsOfYear}}" required>
+            </div>
+            <div class="form-group">
+                <label>End Year</label>
+                <input name="end_year" value="{{.EndYear}}" required>
+            </div>
+            <div class="form-group">
+                <label>Annual Return</label>
+                <input name="annual_return" value="{{.AnnualReturn}}" required>
+            </div>
+            <div class="form-group">
+                <label>Inflation</label>
+                <input name="inflation" value="{{.Inflation}}" required>
+            </div>
+            <button class="outline button-block">Update</button>
+        </form>
+        <div class="card-action">
+            <a href="/households/{{$.HouseholdID}}/plans/{{.ID}}/scenarios">View Scenarios &rarr;</a>
+        </div>
+    </li>
+{{end}}
+</ul>
+{{template "footer" .}}{{end}}

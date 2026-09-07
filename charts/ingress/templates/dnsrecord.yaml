@@ -1,0 +1,17 @@
+{{- range .Values.dnsRecords }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .name }}
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: {{ .hostname }}
+    external-dns.alpha.kubernetes.io/target: {{ .target }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: {{ .port }}
+      protocol: TCP
+      name: {{ .name | trunc 15 | lower }}
+{{- end }}

@@ -1,0 +1,24 @@
+---
+- name: Extract installed concrete signed target kernel releases
+  ansible.builtin.set_fact:
+    target_concrete_kernel_releases: >-
+      {{ target_kernel_package_status.stdout_lines
+         | select('match', transition.target_kernel_concrete_package_regex ~ '[ ]+.*install ok installed$')
+         | map('regex_replace', '^proxmox-kernel-(.*)-signed[ ].*$', '\1')
+         | list }}
+
+- name: Check concrete signed target kernel boot images
+  ansible.builtin.stat:
+    path: "/boot/vmlinuz-{{ item }}"
+  loop: '{{ target_concrete_kernel_releases }}'
+  register: target_concrete_kernel_boot_images
+
+- name: Require concrete signed target kernel packages and boot images
+  ansible.builtin.assert:
+    that:
+      - target_concrete_kernel_releases | length > 0
+      - target_concrete_kernel_releases | select('match', transition.target_kernel_release_regex) | list | length == target_concrete_kernel_releases | length
+      - target_concrete_kernel_boot_images.results | map(attribute='stat.exists') | select('equalto', true) | list | length == target_concrete_kernel_releases | length
+    fail_msg: >-
+      No installed concrete signed target kernel package with a matching /boot/vmlinuz image was found.
+      A meta package alone is insufficient; do not reboot until the signed kernel and boot image are present.

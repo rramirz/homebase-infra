@@ -58,3 +58,12 @@ services:
     tls:
       enabled: true
       insecureSkipVerify: true
+
+# Each entry produces a headless Service carrying external-dns annotations,
+# creating a bare A record (hostname -> target IP) with NO kgateway route.
+# Use for LXC/VM IPs that should resolve directly, not via the Gateway VIP.
+dnsRecords:
+  - name: ai
+    hostname: ai.theramirez.casa
+    target: 192.168.1.9
+    port: 4096

@@ -1,0 +1,53 @@
+{{define "scenarios.html"}}{{template "header" .}}
+<h1>Scenarios for {{.Plan.Name}}</h1>
+<div class="sub-nav">
+    <a href="/households/{{.HouseholdID}}/plans/{{.Plan.ID}}/compare">Compare All Scenarios</a>
+</div>
+
+<h2>Create Scenario</h2>
+<form method="post">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="form-group">
+        <label>Name</label>
+        <input name="name" required>
+    </div>
+    <div class="form-group">
+        <label>Overrides (JSON)</label>
+        <input name="overrides" value="{}" required>
+    <details class="details-spaced">
+            <summary>Advanced JSON Overrides</summary>
+            <p class="help-text">You can supply structured JSON here. Example: <code>{"annual_return": 0.05, "inflation": 0.03}</code></p>
+        </details>
+    </div>
+    <button>Create Scenario</button>
+</form>
+
+<h2>Existing Scenarios</h2>
+<ul class="card-list">
+{{range .Items}}
+    <li class="card">
+        <h3 class="card-title"><a href="{{$.RunURL}}/{{.ID}}">{{.Name}}</a></h3>
+        <form method="post" action="{{$.CloneURL}}/{{.ID}}/update">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <div class="form-group">
+                <label>Name</label>
+                <input name="name" value="{{.Name}}">
+            </div>
+            <div class="form-group">
+                <label>Overrides (JSON)</label>
+                <input name="overrides" value="{{printf "%s" .Overrides}}">
+            </div>
+            <button class="outline">Update</button>
+        </form>
+    <form method="post" action="{{$.CloneURL}}/{{.ID}}/clone" class="form-spaced">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <div class="form-group">
+                <label>New Name for Clone</label>
+                <input name="name" value="{{.Name}} (Copy)">
+            </div>
+            <button>Clone</button>
+        </form>
+    </li>
+{{end}}
+</ul>
+{{template "footer" .}}{{end}}

@@ -1,0 +1,69 @@
+---
+- name: Validate Proxmox package assertion patterns locally
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+  pre_tasks:
+    - name: Load PVE 8 to 9 transition policy from the production playbook
+      ansible.builtin.set_fact:
+        transition: "{{ (lookup('ansible.builtin.file', playbook_dir ~ '/../proxmox-major-upgrade.yaml') | from_yaml)[0].vars.major_transitions.pve8to9 }}"
+
+    - name: Load shared source policy implementation
+      ansible.builtin.set_fact:
+        source_policy_implementation: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../tasks/proxmox-major-source-policy.yaml') }}"
+  tasks:
+    - name: Serialize current PVE 8 package records through command argv
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import sys; expected='-f=${binary:Package} ${Version} ${Status}\\n';
+            sys.exit('unexpected dpkg-query format argument: ' + repr(sys.argv[1]))
+            if sys.argv[1] != expected else print('proxmox-default-kernel 1.1.0 install ok installed',
+            'proxmox-kernel-helper 8.1.4 install ok installed',
+            'proxmox-ve 8.4.0 install ok installed', 'pve-manager 8.4.21 install ok installed', sep='\n')
+          - '-f=${binary:Package} ${Version} ${Status}\n'
+      changed_when: false
+      register: captured_pve8_status
+
+    - name: Assert current PVE 8 package records
+      ansible.builtin.assert:
+        that:
+          - captured_pve8_status.stdout_lines | select('match', '^proxmox-ve[ ]+8[.].*install ok installed$') | list | length == 1
+          - captured_pve8_status.stdout_lines | select('match', '^pve-manager[ ]+8[.].*install ok installed$') | list | length == 1
+          - captured_pve8_status.stdout_lines | select('match', '^proxmox-default-kernel[ ]+.*install ok installed$') | list | length == 1
+          - captured_pve8_status.stdout_lines | select('match', '^proxmox-kernel-helper[ ]+.*install ok installed$') | list | length == 1
+
+    - name: Serialize target PVE 9 package records through command argv
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import sys; expected='-f=${binary:Package} ${Version} ${Status}\\n';
+            sys.exit('unexpected dpkg-query format argument: ' + repr(sys.argv[1]))
+            if sys.argv[1] != expected else print('proxmox-default-kernel 1.1.0 install ok installed',
+            'proxmox-kernel-helper 9.0.1 install ok installed',
+            'proxmox-ve 9.0.1 install ok installed', 'pve-manager 9.0.2 install ok installed',
+            'proxmox-kernel-7.0 7.0.14-14 install ok installed',
+            'proxmox-kernel-7.0.14-14-pve-signed 7.0.14-14 install ok installed', sep='\n')
+          - '-f=${binary:Package} ${Version} ${Status}\n'
+      changed_when: false
+      register: captured_pve9_status
+
+    - name: Assert target PVE 9 package and signed kernel records
+      ansible.builtin.assert:
+        that:
+          - captured_pve9_status.stdout_lines | select('match', '^proxmox-ve[ ]+9[.].*install ok installed$') | list | length == 1
+          - captured_pve9_status.stdout_lines | select('match', '^pve-manager[ ]+9[.].*install ok installed$') | list | length == 1
+          - captured_pve9_status.stdout_lines | select('match', transition.target_kernel_package_regex ~ '.*install ok installed$') | list | length == 2
+          - captured_pve9_status.stdout_lines | select('match', transition.target_kernel_concrete_package_regex ~ '[ ]+.*install ok installed$') | list | length == 1
+          - >-
+            ['proxmox-kernel-7.0 7.0.14-14 install ok installed'] | select('match', transition.target_kernel_concrete_package_regex ~ '[ ]+.*install ok installed$') | list | length == 0
+          - "'7.0.14-14-pve' is match(transition.target_kernel_release_regex)"
+          - "'Reset canonical source policy accumulators' in source_policy_implementation"
+          - "'source_policy_unsupported_active_sources: []' in source_policy_implementation"
+          - "'source_policy_noncanonical_active_sources: []' in source_policy_implementation"
+          - "'source_policy_active_pve_source_files: []' in source_policy_implementation"

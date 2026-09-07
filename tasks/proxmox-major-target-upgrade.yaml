@@ -1,0 +1,81 @@
+---
+- name: Update apt cache for target sources
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+
+- name: Read target Proxmox apt candidates
+  ansible.builtin.command:
+    argv: [apt-cache, policy, pve-manager, proxmox-ve]
+  changed_when: false
+  register: target_pve_candidates
+
+- name: Require PVE 9 target apt candidates
+  ansible.builtin.assert:
+    that: target_pve_candidates.stdout | regex_findall('(?m)^\\s*Candidate:\\s*9\\.') | length == 2
+    fail_msg: "Expected PVE 9 candidates for pve-manager and proxmox-ve: {{ target_pve_candidates.stdout }}"
+
+- name: Simulate target dist-upgrade
+  ansible.builtin.command:
+    argv: [apt-get, -s, dist-upgrade]
+  changed_when: false
+  register: target_upgrade_simulation
+
+- name: Reject protected Proxmox package removals
+  ansible.builtin.assert:
+    that: target_upgrade_simulation.stdout is not search('(?m)^Remv\\s+(?:proxmox-ve|pve-manager|proxmox-default-kernel|proxmox-kernel-helper)\\b')
+    fail_msg: "Target simulation removes a protected Proxmox package: {{ target_upgrade_simulation.stdout }}"
+
+- name: Run controlled target dist-upgrade with local conffile policy
+  ansible.builtin.apt:
+    upgrade: dist
+    dpkg_options: force-confold,force-confdef
+
+- name: Read target Proxmox version
+  ansible.builtin.command:
+    argv: [pveversion]
+  changed_when: false
+  register: target_pveversion
+
+- name: Audit target dpkg package state
+  ansible.builtin.command:
+    argv: [dpkg, --audit]
+  changed_when: false
+  register: target_dpkg_audit
+
+- name: Read target Debian codename
+  ansible.builtin.command:
+    argv: [grep, '^VERSION_CODENAME=', /etc/os-release]
+  changed_when: false
+  register: target_debian_codename
+
+- name: List target Proxmox packages and kernels
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, '-f=${binary:Package} ${Version} ${Status}\n', proxmox-ve, pve-manager, proxmox-default-kernel, proxmox-kernel-helper, 'proxmox-kernel-*']
+  changed_when: false
+  register: target_packages
+
+- name: Require concrete signed target kernel package and boot image
+  ansible.builtin.include_tasks: tasks/proxmox-major-kernel-proof.yaml
+  vars:
+    target_kernel_package_status: '{{ target_packages }}'
+
+- name: Require complete PVE 9 target state before reporting success
+  ansible.builtin.assert:
+    that:
+      - target_pveversion.stdout is match('^pve-manager/' ~ transition.target_pve_major ~ '\\.')
+      - target_debian_codename.stdout == 'VERSION_CODENAME=' ~ transition.target_debian_codename
+      - target_dpkg_audit.stdout | trim == ''
+      - target_packages.stdout_lines | select('match', '^proxmox-ve[ ]+9[.].*install ok installed$') | list | length > 0
+      - target_packages.stdout_lines | select('match', '^pve-manager[ ]+9[.].*install ok installed$') | list | length > 0
+      - target_packages.stdout_lines | select('match', '^proxmox-default-kernel[ ]+.*install ok installed$') | list | length > 0
+      - target_packages.stdout_lines | select('match', '^proxmox-kernel-helper[ ]+.*install ok installed$') | list | length > 0
+      - target_concrete_kernel_releases | length > 0
+    fail_msg: >-
+      Target dist-upgrade did not reach a complete PVE 9/trixie state. Do not reboot; inspect package
+      state and follow the official recovery guidance before continuing.
+
+- name: Re-disable regenerated enterprise source and require canonical source policy
+  ansible.builtin.include_tasks: tasks/proxmox-major-source-policy.yaml
+  vars:
+    cleanup_generated_pve_enterprise_source: true

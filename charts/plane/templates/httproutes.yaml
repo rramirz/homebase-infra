@@ -1,0 +1,47 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "plane.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+spec:
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+  hostnames:
+    - {{ .Values.domains.web | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "plane.fullname" . }}-proxy
+          port: {{ .Values.ports.proxy }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "plane.fullname" . }}-s3
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+  hostnames:
+    - {{ .Values.domains.s3 | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ .Values.seaweedfs.host }}
+          port: {{ .Values.seaweedfs.s3Port }}

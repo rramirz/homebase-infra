@@ -1,0 +1,198 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Job specs are immutable once created — a second `helm upgrade` that
+  # needs to change anything about this Job (image digest, env, resources)
+  # would otherwise collide with the first release's still-present object
+  # (Kubernetes rejects in-place field changes on an existing Job, and even
+  # `ttlSecondsAfterFinished` only reclaims it eventually, not synchronously
+  # with the upgrade). Suffixing the name with `.Release.Revision` (Helm's
+  # own monotonically-increasing per-release counter: 1 on first install, 2
+  # on the first upgrade, etc.) gives every revision its own Job object, so
+  # `helm upgrade` never collides with a prior migrator run. Labels below
+  # stay stable across revisions (same component=migrator selector), so
+  # `kubectl get jobs -l app.kubernetes.io/component=migrator` still lists
+  # the full migration history.
+  name: {{ printf "%s-migrator-%d" (include "plane.fullname" .) (int .Release.Revision) }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrator
+spec:
+  # Normal Job, not a Helm hook: a pre-install hook cannot reach the
+  # postgres/valkey Services created in this same release (they don't exist
+  # yet when hooks run), so this runs as an ordinary Job after those
+  # Services/Deployments are already templated. `helm upgrade` re-applies
+  # this Job spec every release (under a new, revision-suffixed name, see
+  # above); ttlSecondsAfterFinished lets Kubernetes garbage-collect each
+  # completed object so old migration-run history doesn't accumulate
+  # forever.
+  backoffLimit: 6
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrator
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.image.postgres.repository }}:{{ .Values.image.postgres.tag }}@{{ .Values.image.postgres.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              i=0
+              until pg_isready -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER"; do
+                i=$((i + 1))
+                if [ "$i" -ge 60 ]; then
+                  echo "Timed out waiting for postgres at $POSTGRES_HOST:$POSTGRES_PORT" >&2
+                  exit 1
+                fi
+                echo "Waiting for postgres ($i/60)..."
+                sleep 5
+              done
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: POSTGRES_HOST
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: POSTGRES_PORT
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: POSTGRES_USER
+        - name: wait-for-valkey
+          image: "{{ .Values.image.valkey.repository }}:{{ .Values.image.valkey.tag }}@{{ .Values.image.valkey.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              i=0
+              until valkey-cli -h "$VALKEY_HOST" -p "$VALKEY_PORT" PING 2>/dev/null | grep -q PONG; do
+                i=$((i + 1))
+                if [ "$i" -ge 60 ]; then
+                  echo "Timed out waiting for valkey at $VALKEY_HOST:$VALKEY_PORT" >&2
+                  exit 1
+                fi
+                echo "Waiting for valkey ($i/60)..."
+                sleep 5
+              done
+          env:
+            - name: VALKEY_HOST
+              value: {{ .Values.valkey.host | quote }}
+            - name: VALKEY_PORT
+              value: {{ .Values.valkey.port | quote }}
+      containers:
+        # Must override command: the image's default CMD is
+        # ./bin/docker-entrypoint-api.sh (which only WAITS for migrations),
+        # not the migrator script. Run the migrator entrypoint explicitly so
+        # it applies migrations (wait_for_db then migrate). Idempotent:
+        # Django migrate is a no-op once all migrations are applied, so this
+        # Job is safe on first install and every upgrade.
+        - name: migrator
+          image: "{{ .Values.image.plane.repository }}/plane-backend:{{ .Values.image.plane.tag }}@{{ .Values.image.plane.digests.backend }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["./bin/docker-entrypoint-migrator.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: DATABASE_URL
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: SECRET_KEY
+            - name: AMQP_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: AMQP_URL
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "plane.fullname" . }}-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: REDIS_URL
+            - name: WEB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: WEB_URL
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: CORS_ALLOWED_ORIGINS
+            - name: USE_MINIO
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: USE_MINIO
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: AWS_REGION
+            - name: AWS_S3_ENDPOINT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: AWS_S3_ENDPOINT_URL
+            - name: AWS_S3_BUCKET_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: AWS_S3_BUCKET_NAME
+            - name: FILE_SIZE_LIMIT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "plane.fullname" . }}-config
+                  key: FILE_SIZE_LIMIT
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

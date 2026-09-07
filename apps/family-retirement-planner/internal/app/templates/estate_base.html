@@ -1,0 +1,31 @@
+{{define "estate-nav"}}
+<nav class="sub-nav" aria-label="Estate planning navigation">
+  <a href="{{.EstateBase}}/">Overview</a>
+  <a href="{{.EstateBase}}/beneficiaries">Beneficiaries</a>
+  <a href="{{.EstateBase}}/assets">Assets &amp; trusts</a>
+  <a href="{{.EstateBase}}/insurance">Insurance</a>
+  <a href="{{.EstateBase}}/documents">Documents</a>
+  <a href="{{.EstateBase}}/contacts">Contacts</a>
+  <a href="{{.EstateBase}}/digital">Digital metadata</a>
+  <a href="{{.EstateBase}}/scenarios">Scenarios &amp; results</a>
+</nav>
+{{end}}
+
+{{define "estate-disclaimer"}}
+<div class="alert" role="alert">
+  <strong>Important:</strong> {{.Disclaimer}}
+</div>
+{{end}}
+
+{{define "csrf"}}
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+{{end}}
+
+{{define "beneficiary-select"}}
+<select name="beneficiary_id" required>
+  <option value="">Select beneficiary</option>
+  {{range .Beneficiaries}}
+  <option value="{{.ID}}">{{.Name}}</option>
+  {{end}}
+</select>
+{{end}}

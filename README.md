@@ -16,6 +16,8 @@ Ansible playbooks for managing the homebase Kubernetes cluster, LXC containers, 
 | `update-k8s.yaml` | `home_base` | Upgrade Kubernetes to a selected version. Prompts for the version, upgrades master first, then rolls through workers one at a time. |
 | `update-homebase.yaml` | `home_base` | Dist-upgrade all OS packages on K8s nodes and reboot if needed. |
 | `update-servers.yaml` | `servers` | Dist-upgrade SSH-managed servers; defaults to no reboot unless `-e reboot_if_required=true`. |
+| `update-proxmox.yaml` | `proxmox` | Serial Proxmox package maintenance; defaults to no reboot unless `-e reboot_if_required=true`. |
+| `proxmox-major-upgrade.yaml` | one limited `proxmox` host | Guarded PVE 8/bookworm → PVE 9/trixie phase workflow. See [`docs/runbooks/proxmox-major-upgrade.md`](./docs/runbooks/proxmox-major-upgrade.md). |
 | `update-plex.yaml` | `plex` | Download and install the latest Plex Media Server `.deb` package. |
 | `update-syncthing-lxc.yaml` | `proxmox_managed_lxc` | Back up and update Syncthing inside the Proxmox-managed sync LXC via `pct exec`. |
 | `disable-swap.yaml` | `bootstrap` | Deploy the swapoff systemd service to persistently disable swap. Already included in `add-k8s-node.yaml`. |
@@ -46,6 +48,7 @@ task install:all-node-exporters
 # OS / Kubernetes / Plex
 task update:active-kubernetes-node-os
 task update:ssh-managed-server-os-no-reboot
+task update:proxmox-packages-no-reboot
 task update:kubernetes-version
 task update:plex-media-server
 task update:syncthing-lxc
@@ -56,6 +59,20 @@ task monitoring:upgrade-prometheus-stack
 task monitoring:apply-grafana-dashboards-and-rules
 task monitoring:show-syncthing-storage
 ```
+
+Major Proxmox upgrades are one-host, explicit-acknowledgement operations:
+
+```bash
+task proxmox:major:preflight PVE_HOST=pve-1 BACKUP_VERIFIED=true OUTAGE_ACKNOWLEDGED=true
+task proxmox:major:upgrade PVE_HOST=pve-1 BACKUP_VERIFIED=true OUTAGE_ACKNOWLEDGED=true
+task proxmox:major:resume PVE_HOST=pve-1 BACKUP_VERIFIED=true OUTAGE_ACKNOWLEDGED=true RESUME_CONFIRMED=true
+task proxmox:major:reboot PVE_HOST=pve-1 OUTAGE_ACKNOWLEDGED=true REBOOT_CONFIRMED=true
+task proxmox:major:verify PVE_HOST=pve-1
+```
+
+Read the [major-upgrade runbook](./docs/runbooks/proxmox-major-upgrade.md)
+before running any phase. It supports PVE 8/bookworm → PVE 9/trixie only and
+does not provide an in-place downgrade path.
 
 Short aliases still work (`task k8s:status`, `task exporters:all`, etc.), but
 the longer names are preferred because they describe scope and impact.

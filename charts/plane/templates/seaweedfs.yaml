@@ -1,0 +1,170 @@
+{{- $s3cfg := dict "identities" (list (dict "name" "plane" "credentials" (list (dict "accessKey" .Values.secrets.seaweedfs.s3AccessKeyId "secretKey" .Values.secrets.seaweedfs.s3SecretAccessKey)) "actions" (list "Admin" "Read" "List" "Tagging" "Write"))) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "plane.fullname" . }}-seaweedfs-s3-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+type: Opaque
+stringData:
+  s3.json: |
+    {{- toPrettyJson $s3cfg | nindent 4 }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "plane.fullname" . }}-seaweedfs
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.seaweedfs.storageSize }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.seaweedfs.host }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  type: ClusterIP
+  ports:
+    - name: master
+      port: {{ .Values.seaweedfs.masterPort }}
+      targetPort: master
+      protocol: TCP
+    - name: volume
+      port: {{ .Values.seaweedfs.volumePort }}
+      targetPort: volume
+      protocol: TCP
+    - name: filer
+      port: {{ .Values.seaweedfs.filerPort }}
+      targetPort: filer
+      protocol: TCP
+    - name: s3
+      port: {{ .Values.seaweedfs.s3Port }}
+      targetPort: s3
+      protocol: TCP
+  selector:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plane.fullname" . }}-seaweedfs
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plane.labels" . | nindent 6 }}
+      app.kubernetes.io/component: seaweedfs
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: "{{ .Values.image.seaweedfs.repository }}:{{ .Values.image.seaweedfs.tag }}@{{ .Values.image.seaweedfs.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Runs as root at startup by design: /entrypoint.sh chowns /data to
+          # the seaweed user then re-execs via su-exec itself (verified
+          # against the actual entrypoint script). Dropping all Linux
+          # capabilities would remove CAP_CHOWN/CAP_SETUID and break that
+          # drop, so only allowPrivilegeEscalation is disabled.
+          securityContext:
+            allowPrivilegeEscalation: false
+          # Image ENTRYPOINT is /entrypoint.sh (left as default); args
+          # override its default CMD. Use `weed server` (the full all-in-one)
+          # not `weed mini`: mini rejects -volume.port/-filer.port/-s3.port/
+          # -s3.config/-s3.allowedOrigins (exits 2 + prints help). `server`
+          # runs master+volume by default; -filer and -s3 explicitly enable
+          # those components, and it accepts all the port/config/CORS flags.
+          args:
+            - server
+            - -dir=/data
+            - -ip.bind=0.0.0.0
+            - -filer
+            - -s3
+            - -master.port={{ .Values.seaweedfs.masterPort }}
+            - -volume.port={{ .Values.seaweedfs.volumePort }}
+            - -filer.port={{ .Values.seaweedfs.filerPort }}
+            - -s3.port={{ .Values.seaweedfs.s3Port }}
+            - -s3.config=/etc/seaweedfs/s3.json
+            - -s3.allowedOrigins={{ .Values.env.corsAllowedOrigins }}
+          ports:
+            - name: master
+              containerPort: {{ .Values.seaweedfs.masterPort }}
+              protocol: TCP
+            - name: volume
+              containerPort: {{ .Values.seaweedfs.volumePort }}
+              protocol: TCP
+            - name: filer
+              containerPort: {{ .Values.seaweedfs.filerPort }}
+              protocol: TCP
+            - name: s3
+              containerPort: {{ .Values.seaweedfs.s3Port }}
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: s3-config
+              mountPath: /etc/seaweedfs/s3.json
+              subPath: s3.json
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources.seaweedfs | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.seaweedfs.tcp.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.seaweedfs.tcp.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 6
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "plane.fullname" . }}-seaweedfs
+        - name: s3-config
+          secret:
+            secretName: {{ include "plane.fullname" . }}-seaweedfs-s3-config
+            items:
+              - key: s3.json
+                path: s3.json
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

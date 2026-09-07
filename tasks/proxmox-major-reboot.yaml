@@ -1,0 +1,91 @@
+---
+- name: Require explicit reboot confirmation and outage acknowledgement
+  ansible.builtin.assert:
+    that:
+      - reboot_confirmed | bool
+      - outage_acknowledged | bool
+    fail_msg: Set reboot_confirmed=true and outage_acknowledged=true for this one selected host.
+
+- name: Read target Proxmox version before reboot
+  ansible.builtin.command:
+    argv: [pveversion]
+  changed_when: false
+  register: target_pveversion
+
+- name: Audit target dpkg package state before reboot
+  ansible.builtin.command:
+    argv: [dpkg, --audit]
+  changed_when: false
+  register: target_dpkg_audit
+
+- name: Read target Debian codename before reboot
+  ansible.builtin.command:
+    argv: [grep, '^VERSION_CODENAME=', /etc/os-release]
+  changed_when: false
+  register: target_debian_codename
+
+- name: List installed target Proxmox packages before reboot
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, '-f=${binary:Package} ${Version} ${Status}\n', proxmox-ve, pve-manager, proxmox-default-kernel, proxmox-kernel-helper, 'proxmox-kernel-*']
+  changed_when: false
+  register: target_kernel_packages
+
+- name: Require concrete signed target kernel package and boot image before reboot
+  ansible.builtin.include_tasks: tasks/proxmox-major-kernel-proof.yaml
+  vars:
+    target_kernel_package_status: '{{ target_kernel_packages }}'
+
+- name: Require complete PVE 9 target state before reboot
+  ansible.builtin.assert:
+    that:
+      - target_pveversion.stdout is match('^pve-manager/' ~ transition.target_pve_major ~ '\\.')
+      - target_debian_codename.stdout == 'VERSION_CODENAME=' ~ transition.target_debian_codename
+      - target_dpkg_audit.stdout | trim == ''
+      - target_kernel_packages.stdout_lines | select('match', '^proxmox-ve[ ]+9[.].*install ok installed$') | list | length > 0
+      - target_kernel_packages.stdout_lines | select('match', '^pve-manager[ ]+9[.].*install ok installed$') | list | length > 0
+      - target_concrete_kernel_releases | length > 0
+      - target_kernel_packages.stdout_lines | select('match', '^proxmox-default-kernel[ ]+.*install ok installed$') | list | length > 0
+      - target_kernel_packages.stdout_lines | select('match', '^proxmox-kernel-helper[ ]+.*install ok installed$') | list | length > 0
+    fail_msg: >-
+      Refusing reboot: target PVE 9/trixie state, dpkg audit, or target Proxmox kernel package is not
+      ready. Complete the upgrade or recover package state before explicitly rebooting.
+
+- name: Require canonical source policy before reboot
+  ansible.builtin.include_tasks: tasks/proxmox-major-source-policy.yaml
+
+- name: Record boot ID before reboot
+  ansible.builtin.command:
+    argv: [cat, /proc/sys/kernel/random/boot_id]
+  changed_when: false
+  register: boot_id_before
+
+- name: Reboot selected Proxmox host
+  ansible.builtin.reboot:
+    msg: Explicitly confirmed Proxmox major-upgrade reboot
+    connect_timeout: 5
+    reboot_timeout: 900
+    pre_reboot_delay: 0
+    post_reboot_delay: 30
+    test_command: pveversion
+
+- name: Read boot ID after reboot
+  ansible.builtin.command:
+    argv: [cat, /proc/sys/kernel/random/boot_id]
+  changed_when: false
+  register: boot_id_after
+
+- name: Require changed boot ID
+  ansible.builtin.assert:
+    that: boot_id_before.stdout != boot_id_after.stdout
+    fail_msg: Reboot task returned but boot ID did not change.
+
+- name: Read running kernel after reboot
+  ansible.builtin.command:
+    argv: [uname, -r]
+  changed_when: false
+  register: running_kernel
+
+- name: Require a supported PVE 9 kernel is running
+  ansible.builtin.assert:
+    that: running_kernel.stdout is match(transition.target_kernel_release_regex)
+    fail_msg: "Reboot completed but running kernel is not an allowed PVE 9 kernel: {{ running_kernel.stdout }}"

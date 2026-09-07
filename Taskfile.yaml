@@ -9,6 +9,12 @@ vars:
   VERSION_CHECKER_CHARTS_DIR: charts/version-checker
   MEALIE_CHARTS_DIR: charts/mealie
   MEALIE_NS: mealie
+  PLANE_CHARTS_DIR: charts/plane
+  PLANE_NS: plane
+  FLANNEL_CHARTS_DIR: charts/flannel
+  FLANNEL_NS: kube-flannel
+  RETIREMENT_APP_DIR: apps/family-retirement-planner
+  RETIREMENT_CHART_DIR: apps/family-retirement-planner/chart
 
 env:
   ANSIBLE_FORCE_COLOR: 'true'
@@ -83,6 +89,88 @@ tasks:
     cmds:
       - '{{.ANSIBLE}} update-servers.yaml -e reboot_if_required=true'
 
+  update:proxmox-packages-no-reboot:
+    desc: Dist-upgrade packages serially on [proxmox] and only report required reboots
+    cmds:
+      - '{{.ANSIBLE}} update-proxmox.yaml'
+
+  update:proxmox-packages-with-reboot:
+    desc: Dist-upgrade packages and reboot one exact PVE_HOST only if required
+    prompt: This can reboot the selected Proxmox hypervisor. Continue?
+    preconditions:
+      - sh: 'case "{{.PVE_HOST}}" in pve-1|pve-2) exit 0 ;; *) exit 1 ;; esac'
+        msg: Set PVE_HOST to exactly pve-1 or pve-2; multi-host Proxmox reboots are refused.
+    cmds:
+      - '{{.ANSIBLE}} update-proxmox.yaml --limit {{.PVE_HOST}} -e reboot_if_required=true'
+
+  proxmox:major:preflight:
+    desc: Read-only PVE 8 to 9 preflight for exactly one PVE_HOST; requires backup/outage acknowledgements
+    vars:
+      BACKUP_VERIFIED: '{{.BACKUP_VERIFIED | default "false"}}'
+      OUTAGE_ACKNOWLEDGED: '{{.OUTAGE_ACKNOWLEDGED | default "false"}}'
+    preconditions:
+      - sh: 'case "{{.PVE_HOST}}" in pve-1|pve-2) exit 0 ;; *) exit 1 ;; esac'
+        msg: Set PVE_HOST to exactly pve-1 or pve-2; broad major-upgrade runs are refused.
+    cmds:
+      - >-
+        {{.ANSIBLE}} proxmox-major-upgrade.yaml --limit {{.PVE_HOST}}
+        -e phase=preflight -e pve_host={{.PVE_HOST}}
+        -e backup_verified={{.BACKUP_VERIFIED}} -e outage_acknowledged={{.OUTAGE_ACKNOWLEDGED}}
+
+  proxmox:major:upgrade:
+    desc: Migrate exactly one verified PVE_HOST from PVE 8/bookworm to PVE 9/trixie; does not reboot
+    prompt: This changes apt sources and dist-upgrades one Proxmox host. Continue only after preflight and outage planning?
+    vars:
+      BACKUP_VERIFIED: '{{.BACKUP_VERIFIED | default "false"}}'
+      OUTAGE_ACKNOWLEDGED: '{{.OUTAGE_ACKNOWLEDGED | default "false"}}'
+    preconditions:
+      - sh: 'case "{{.PVE_HOST}}" in pve-1|pve-2) exit 0 ;; *) exit 1 ;; esac'
+        msg: Set PVE_HOST to exactly pve-1 or pve-2; broad major-upgrade runs are refused.
+    cmds:
+      - >-
+        {{.ANSIBLE}} proxmox-major-upgrade.yaml --limit {{.PVE_HOST}}
+        -e phase=upgrade -e pve_host={{.PVE_HOST}}
+        -e backup_verified={{.BACKUP_VERIFIED}} -e outage_acknowledged={{.OUTAGE_ACKNOWLEDGED}}
+
+  proxmox:major:reboot:
+    desc: Reboot exactly one upgraded PVE_HOST; requires separate explicit confirmation
+    prompt: This reboots one Proxmox host and interrupts its guests. Continue only during the approved outage?
+    vars:
+      OUTAGE_ACKNOWLEDGED: '{{.OUTAGE_ACKNOWLEDGED | default "false"}}'
+      REBOOT_CONFIRMED: '{{.REBOOT_CONFIRMED | default "false"}}'
+    preconditions:
+      - sh: 'case "{{.PVE_HOST}}" in pve-1|pve-2) exit 0 ;; *) exit 1 ;; esac'
+        msg: Set PVE_HOST to exactly pve-1 or pve-2; broad major-upgrade runs are refused.
+    cmds:
+      - >-
+        {{.ANSIBLE}} proxmox-major-upgrade.yaml --limit {{.PVE_HOST}}
+        -e phase=reboot -e pve_host={{.PVE_HOST}}
+        -e outage_acknowledged={{.OUTAGE_ACKNOWLEDGED}} -e reboot_confirmed={{.REBOOT_CONFIRMED}}
+
+  proxmox:major:resume:
+    desc: Resume exactly one interrupted target upgrade only with canonical trixie sources and explicit confirmation
+    prompt: This resumes a partially completed PVE target upgrade. Continue only after manual package recovery review?
+    vars:
+      BACKUP_VERIFIED: '{{.BACKUP_VERIFIED | default "false"}}'
+      OUTAGE_ACKNOWLEDGED: '{{.OUTAGE_ACKNOWLEDGED | default "false"}}'
+      RESUME_CONFIRMED: '{{.RESUME_CONFIRMED | default "false"}}'
+    preconditions:
+      - sh: 'case "{{.PVE_HOST}}" in pve-1|pve-2) exit 0 ;; *) exit 1 ;; esac'
+        msg: Set PVE_HOST to exactly pve-1 or pve-2; broad major-upgrade runs are refused.
+    cmds:
+      - >-
+        {{.ANSIBLE}} proxmox-major-upgrade.yaml --limit {{.PVE_HOST}}
+        -e phase=resume -e pve_host={{.PVE_HOST}} -e backup_verified={{.BACKUP_VERIFIED}}
+        -e outage_acknowledged={{.OUTAGE_ACKNOWLEDGED}} -e resume_confirmed={{.RESUME_CONFIRMED}}
+
+  proxmox:major:verify:
+    desc: Read-only PVE 9/trixie verification for exactly one PVE_HOST
+    preconditions:
+      - sh: 'case "{{.PVE_HOST}}" in pve-1|pve-2) exit 0 ;; *) exit 1 ;; esac'
+        msg: Set PVE_HOST to exactly pve-1 or pve-2; broad major-upgrade runs are refused.
+    cmds:
+      - '{{.ANSIBLE}} proxmox-major-upgrade.yaml --limit {{.PVE_HOST}} -e phase=verify -e pve_host={{.PVE_HOST}}'
+
   update:kubernetes-version:
     aliases: [k8s:upgrade]
     desc: Upgrade Kubernetes packages/control plane/workers to an interactively selected version
@@ -145,6 +233,121 @@ tasks:
     dir: '{{.VERSION_CHECKER_CHARTS_DIR}}'
     cmds:
       - helm upgrade version-checker . -n {{.MONITORING_NS}} -f values.yaml
+
+  flannel:dependency:
+    desc: Rebuild the vendored Flannel dependency from Chart.lock without touching the cluster
+    dir: '{{.FLANNEL_CHARTS_DIR}}'
+    cmds:
+      - helm repo add flannel https://flannel-io.github.io/flannel --force-update
+      - helm dependency build .
+
+  flannel:lint:
+    desc: Lint the pinned Flannel CNI Helm wrapper without touching the cluster
+    dir: '{{.FLANNEL_CHARTS_DIR}}'
+    deps: [flannel:dependency]
+    cmds:
+      - helm lint . -f values.yaml
+
+  flannel:render:
+    desc: Render the pinned Flannel CNI chart locally without touching the cluster
+    dir: '{{.FLANNEL_CHARTS_DIR}}'
+    deps: [flannel:dependency]
+    cmds:
+      - helm template flannel . -n {{.FLANNEL_NS}} -f values.yaml >/tmp/flannel-render.yaml
+
+  flannel:diff:
+    desc: Show the live Flannel release diff without applying changes
+    dir: '{{.FLANNEL_CHARTS_DIR}}'
+    deps: [flannel:dependency]
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to diff against the wrong cluster
+    cmds:
+      - helm diff upgrade flannel . -n {{.FLANNEL_NS}} -f values.yaml --reset-values
+
+  flannel:dry-run:
+    desc: Run a server-side Flannel Helm upgrade dry-run without mutating the cluster
+    dir: '{{.FLANNEL_CHARTS_DIR}}'
+    deps: [flannel:dependency]
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to dry-run against the wrong cluster
+    cmds:
+      - helm upgrade flannel . -n {{.FLANNEL_NS}} -f values.yaml --reset-values --dry-run=server
+
+  flannel:upgrade:
+    desc: Upgrade the live Flannel CNI release after the documented stable-baseline and image pre-pull checks
+    deps: [flannel:dependency]
+    prompt: This upgrades the cluster CNI and can disrupt every pod network path. Continue only after the Flannel runbook checks pass?
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to upgrade against the wrong cluster
+    cmds:
+      - helm upgrade flannel charts/flannel -n kube-flannel --reset-values --wait --timeout 10m
+
+  flannel:rollback:
+    desc: Roll Flannel back explicitly to release revision 1 and wait for the DaemonSet
+    deps: [flannel:dependency]
+    prompt: This rolls the cluster CNI back to Flannel release revision 1. Continue only under the documented abort procedure?
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to rollback against the wrong cluster
+    cmds:
+      - helm rollback flannel 1 -n kube-flannel --wait --timeout 10m
+
+  flannel:verify:
+    desc: Verify live Flannel nodes, release, DaemonSet, rendered image/config, probes, and toleration read-only
+    deps: [flannel:dependency]
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to verify the wrong cluster
+    cmds:
+      - test "$(kubectl get --raw=/readyz)" = ok
+      - kubectl get nodes -o wide
+      - >-
+        kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' |
+        awk 'NF != 2 || $2 != "True" { exit 1 }'
+      - helm status flannel -n kube-flannel
+      - kubectl -n kube-flannel get daemonset kube-flannel-ds -o wide
+      - >-
+        kubectl -n kube-flannel get daemonset kube-flannel-ds
+        -o jsonpath='{.status.desiredNumberScheduled} {.status.currentNumberScheduled} {.status.numberReady} {.status.numberAvailable}' |
+        awk '$1 != 5 || $2 != 5 || $3 != 5 || $4 != 5 { exit 1 }'
+      - >-
+        test "$(kubectl -n kube-flannel get daemonset kube-flannel-ds
+        -o jsonpath='{.spec.template.spec.containers[?(@.name=="kube-flannel")].image}')"
+        = ghcr.io/flannel-io/flannel:v0.28.9
+      - >-
+        test "$(kubectl -n kube-flannel get daemonset kube-flannel-ds
+        -o jsonpath='{.spec.template.spec.initContainers[?(@.name=="install-cni-plugin")].image}')"
+        = ghcr.io/flannel-io/flannel-cni-plugin:v1.9.1-flannel3
+      - >-
+        kubectl -n kube-flannel get configmap kube-flannel-cfg
+        -o jsonpath='{.data.net-conf\.json}' | grep -Fq '10.244.0.0/16'
+      - >-
+        kubectl -n kube-flannel get configmap kube-flannel-cfg
+        -o jsonpath='{.data.net-conf\.json}' | grep -Fq '"Type": "vxlan"'
+      - helm template flannel charts/flannel -n kube-flannel -f charts/flannel/values.yaml >/tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'name: kube-flannel-ds' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'name: kube-flannel-cfg' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'name: flannel' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF '10.244.0.0/16' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF '"Type": "vxlan"' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'ghcr.io/flannel-io/flannel:v0.28.9' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'ghcr.io/flannel-io/flannel-cni-plugin:v1.9.1-flannel3' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'livenessProbe:' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'readinessProbe:' /tmp/flannel-verify-render.yaml
+      - >-
+        grep -qF 'effect: NoExecute' /tmp/flannel-verify-render.yaml
 
   check:cluster-upgrades:
     aliases: [nova]
@@ -234,3 +437,79 @@ tasks:
       - kubectl create namespace {{.BACKBLAZE_NS}} --dry-run=client -o yaml | kubectl apply -f -
       - kubectl label namespace {{.BACKBLAZE_NS}} pod-security.kubernetes.io/enforce=privileged pod-security.kubernetes.io/audit=privileged pod-security.kubernetes.io/warn=privileged --overwrite
       - helm upgrade --install backblaze-wine . -n {{.BACKBLAZE_NS}} --create-namespace -f values.yaml
+
+  plane:lint:
+    desc: Lint the disposable Plane CE pilot Helm chart using both the committed and local secret values files
+    dir: '{{.PLANE_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f secret-values.yaml
+        msg: charts/plane/secret-values.yaml not found - copy secret-values.example.yaml to secret-values.yaml and fill in local values first
+    cmds:
+      - helm lint . -f values.yaml -f secret-values.yaml
+
+  plane:render:
+    desc: Render the disposable Plane CE pilot Helm chart locally to catch template errors before upgrade
+    dir: '{{.PLANE_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f secret-values.yaml
+        msg: charts/plane/secret-values.yaml not found - copy secret-values.example.yaml to secret-values.yaml and fill in local values first
+    cmds:
+      - helm template plane . -n {{.PLANE_NS}} -f values.yaml -f secret-values.yaml >/tmp/plane-render.yaml
+
+  plane:dry-run:
+    desc: Server-side dry-run of the Plane CE pilot Helm upgrade against the live cluster without mutating anything
+    dir: '{{.PLANE_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f secret-values.yaml
+        msg: charts/plane/secret-values.yaml not found - copy secret-values.example.yaml to secret-values.yaml and fill in local values first
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to dry-run against the wrong cluster
+    cmds:
+      - helm upgrade --install plane . -n {{.PLANE_NS}} --create-namespace -f values.yaml -f secret-values.yaml --dry-run=server
+
+  plane:upgrade:
+    desc: Install or upgrade the disposable Plane CE pilot in the home cluster - no real data
+    prompt: Plane CE is a disposable home-lab pilot and must never hold real data. This installs/upgrades it in the {{.PLANE_NS}} namespace. Continue?
+    dir: '{{.PLANE_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f secret-values.yaml
+        msg: charts/plane/secret-values.yaml not found - copy secret-values.example.yaml to secret-values.yaml and fill in local values first
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to upgrade against the wrong cluster
+    cmds:
+      - helm upgrade --install plane . -n {{.PLANE_NS}} --create-namespace -f values.yaml -f secret-values.yaml --atomic --timeout 35m
+
+  family-retirement-planner:test:
+    desc: Run Family Retirement Planner unit and static checks
+    dir: '{{.RETIREMENT_APP_DIR}}'
+    cmds:
+      - test -z "$(gofmt -l .)"
+      - go vet ./...
+      - go test ./...
+
+  family-retirement-planner:integration:
+    desc: Run PostgreSQL-backed household isolation tests; requires local Docker
+    dir: '{{.RETIREMENT_APP_DIR}}'
+    cmds:
+      - docker compose up -d --wait postgres
+      - TEST_DATABASE_URL=postgres://retirement:retirement@localhost:5432/retirement?sslmode=disable go test -tags=integration ./internal/app/...
+      - docker compose down -v
+
+  family-retirement-planner:lint-chart:
+    desc: Lint Family Retirement Planner Helm chart without touching cluster
+    dir: '{{.RETIREMENT_CHART_DIR}}'
+    cmds:
+      - helm lint . -f values.yaml -f secret-values.example.yaml
+
+  family-retirement-planner:render-chart:
+    desc: Render Family Retirement Planner Helm chart without touching cluster
+    dir: '{{.RETIREMENT_CHART_DIR}}'
+    cmds:
+      - helm template family-retirement-planner . -n family-retirement-planner -f values.yaml -f secret-values.example.yaml >/tmp/family-retirement-planner-render.yaml
+
+  family-retirement-planner:verify:
+    desc: Run static app and chart verification; excludes Docker-backed integration tests
+    cmds:
+      - task: family-retirement-planner:test
+      - task: family-retirement-planner:lint-chart
+      - task: family-retirement-planner:render-chart

@@ -1,0 +1,108 @@
+{{define "estate_insurance.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Life insurance</h1>
+{{template "estate-disclaimer" .}}
+
+<div class="card">
+  <h2>Add policy</h2>
+  <form method="post">
+    {{template "csrf" .}}
+    <div class="dashboard-grid">
+      <div class="form-group">
+        <label>Policy label
+          <input name="policy_name" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Death benefit
+          <input name="benefit" inputmode="decimal" value="0" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          <input class="checkbox" type="checkbox" name="in_estate" value="true"> Payable to estate
+        </label>
+        <p class="help-text">Check this if the policy payout goes to the probate estate instead of a named beneficiary.</p>
+      </div>
+    </div>
+    <button type="submit">Add policy</button>
+  </form>
+</div>
+
+<h2>Recorded policies</h2>
+{{if .Items}}
+  <div class="card-list">
+  {{range .Items}}
+  <article class="card card-spaced">
+    <form method="post" action="{{$.EstateBase}}/insurance/{{.ID}}/update">
+      {{template "csrf" $}}
+      <div class="form-group">
+        <label>Policy label
+          <input name="policy_name" value="{{.PolicyName}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Death benefit
+          <input name="benefit" value="{{.Benefit}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          <input class="checkbox" type="checkbox" name="in_estate" value="true" {{if .InEstate}}checked{{end}}> Payable to estate
+        </label>
+      </div>
+      <button type="submit" class="outline button-block">Update policy</button>
+    </form>
+    
+    <hr class="hr-spaced">
+    
+    <section>
+      <h3>Named beneficiaries</h3>
+      <ul class="event-list mb-md">
+        {{range .Designations}}
+        <li>
+          {{.BeneficiaryName}} &mdash; {{.SharePercent}} ({{.Tier}})
+          <form class="inline float-right" method="post" action="{{$.EstateBase}}/insurance-designations/{{.ID}}/delete">
+            {{template "csrf" $}}
+            <button type="submit" class="danger">Remove</button>
+          </form>
+        </li>
+        {{else}}
+        <li class="text-muted">None recorded.</li>
+        {{end}}
+      </ul>
+      <form method="post" action="{{$.EstateBase}}/insurance/{{.ID}}/designations" class="form-spaced">
+        {{template "csrf" $}}
+        <div class="form-group">
+          <label>Beneficiary</label>
+          {{template "beneficiary-select" $}}
+        </div>
+        <div class="form-group">
+          <label>Share (enter as decimal 0–1, e.g. 0.5)
+            <input name="share_percent" value="1" required>
+          </label>
+        </div>
+        <div class="form-group"><label>Tier<select name="tier"><option value="primary">Primary</option><option value="contingent">Contingent</option></select></label></div>
+        <button type="submit">Add designation</button>
+      </form>
+    </section>
+    
+    <div class="card-actions mt-lg">
+      <form method="post" action="{{$.EstateBase}}/insurance/{{.ID}}/delete">
+        {{template "csrf" $}}
+        <button type="submit" class="danger">Delete policy</button>
+      </form>
+    </div>
+  </article>
+  {{end}}
+  </div>
+{{else}}
+  <div class="empty-state">
+    <p>No policies recorded.</p>
+  </div>
+{{end}}
+
+{{template "footer" .}}
+{{end}}

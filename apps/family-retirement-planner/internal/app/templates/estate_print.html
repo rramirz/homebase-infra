@@ -1,0 +1,87 @@
+{{define "estate_print.html"}}
+{{template "header" .}}
+<article class="print-report">
+  <h1>Estate scenario report</h1>
+  {{template "estate-disclaimer" .}}
+  
+  <p class="text-muted mb-xl">Use the browser print command to print or save this persisted report.</p>
+  
+  <div class="print-report-header">
+    <dl class="dl-grid">
+      <dt class="text-secondary">Scenario</dt>
+      <dd class="font-medium ml-0">{{.Run.ScenarioName}}</dd>
+      
+      <dt class="text-secondary">Decedent</dt>
+      <dd class="font-medium ml-0">{{.Run.DecedentName}}</dd>
+      
+      <dt class="text-secondary">Run Date</dt>
+      <dd class="font-medium ml-0">{{.Run.CreatedAt}}</dd>
+
+      <dt class="text-secondary">As-of / death year</dt>
+      <dd class="font-medium ml-0">{{.Run.AsOfYear}} / {{.Run.DeathYear}}</dd>
+    </dl>
+  </div>
+
+  <div class="dashboard-grid">
+    <div class="stat-box">
+      <h3>Gross modeled assets</h3>
+      <div class="stat-value">${{.Run.Result.GrossEstate}}</div>
+    </div>
+    <div class="stat-box">
+      <h3>Probate estate</h3>
+      <div class="stat-value">${{.Run.Result.ProbateEstate}}</div>
+    </div>
+    <div class="stat-box">
+      <h3>Liquid probate assets</h3>
+      <div class="stat-value">${{.Run.Result.LiquidProbate}}</div>
+    </div>
+    <div class="stat-box">
+      <h3>Entered obligations</h3>
+      <div class="stat-value">${{.Run.Result.Obligations}}</div>
+    </div>
+    <div class="stat-box grid-col-span-all bg-base">
+      <h3>Net residuary estate</h3>
+      <div class="stat-value text-success">${{.Run.Result.NetEstate}}</div>
+    </div>
+  </div>
+
+  {{if .Run.Result.LiquidityWarning}}
+  <div class="alert break-inside-avoid">
+    <strong>Liquidity shortfall:</strong> ${{.Run.Result.LiquidityShortfall}}
+  </div>
+  {{end}}
+  {{if .Run.Result.Insolvent}}
+  <div class="alert alert-danger break-inside-avoid">
+    <strong>Solvency warning:</strong> Entered obligations exceed modeled probate assets.
+  </div>
+  {{end}}
+
+  <h2>Readiness at run time</h2>
+  <table><thead><tr><th>Item</th><th>Status</th><th>Reason</th></tr></thead><tbody>{{range .Run.Result.Readiness}}<tr><td>{{.Label}}</td><td>{{.Status}}</td><td>{{.Reason}}</td></tr>{{end}}</tbody></table>
+
+  <h2 class="mt-xxl">Event ledger</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="w-15">Stage</th>
+        <th class="w-25">Source</th>
+        <th class="w-25">Target</th>
+        <th class="w-15">Amount</th>
+        <th class="w-20">Explanation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Run.Result.Events}}
+      <tr>
+        <td class="text-secondary font-medium">{{.Stage}}</td>
+        <td>{{.Source}}</td>
+        <td>{{.Target}}</td>
+        <td class="font-serif">${{.Amount}}</td>
+        <td class="text-sm">{{.Note}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</article>
+{{template "footer" .}}
+{{end}}

@@ -1,0 +1,8 @@
+---
+- name: Require explicit backup evidence acknowledgement
+  ansible.builtin.assert:
+    that: backup_verified | bool
+    fail_msg: Set backup_verified=true only after recording and verifying recovery evidence.
+
+- name: Run shared Proxmox major technical preflight
+  ansible.builtin.include_tasks: tasks/proxmox-major-technical-preflight.yaml

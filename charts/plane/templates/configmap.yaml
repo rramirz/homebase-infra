@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "plane.fullname" . }}-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+data:
+  WEB_URL: {{ .Values.env.webUrl | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.env.corsAllowedOrigins | quote }}
+  USE_MINIO: {{ .Values.env.useMinio | quote }}
+  AWS_REGION: {{ .Values.env.awsRegion | quote }}
+  AWS_S3_ENDPOINT_URL: {{ .Values.env.awsS3EndpointUrl | quote }}
+  AWS_S3_BUCKET_NAME: {{ .Values.env.awsS3BucketName | quote }}
+  FILE_SIZE_LIMIT: {{ .Values.env.fileSizeLimit | quote }}
+  POSTGRES_HOST: {{ .Values.postgres.host | quote }}
+  POSTGRES_PORT: {{ .Values.postgres.port | quote }}
+  POSTGRES_DB: {{ .Values.postgres.db | quote }}
+  RABBITMQ_HOST: {{ .Values.rabbitmq.host | quote }}
+  RABBITMQ_PORT: {{ .Values.rabbitmq.port | quote }}
+  # Task 4 additions. All three verified required directly against the
+  # pinned makeplane/plane-backend:v1.3.1 / plane-live:v1.3.1 images (not
+  # assumed) before being added here:
+  #
+  # 1. REDIS_URL: plane/settings/common.py line 221 reads
+  #    `REDIS_URL = os.environ.get("REDIS_URL")` unconditionally and uses it
+  #    directly as the Django cache LOCATION for every backend process
+  #    (api/worker/beat/migrator all import settings.py). It was entirely
+  #    absent from this ConfigMap before Task 4. Valkey has no
+  #    authentication configured (see templates/valkey.yaml / Task 3 — no
+  #    requirepass, no secrets.valkey section anywhere), so this is a plain
+  #    non-secret connection string.
+  REDIS_URL: {{ printf "redis://%s:%d" .Values.valkey.host (int .Values.valkey.port) | quote }}
+  # 2. GUNICORN_WORKERS: the official docker-entrypoint-api.sh ends with
+  #    `exec gunicorn -w "$GUNICORN_WORKERS" ...`. The image sets no default
+  #    for this var (confirmed via docker inspect of the pinned image's
+  #    Config.Env); if left unset, gunicorn is invoked with
+  #    `-w ""` and fails to start immediately. Sized to 2 workers to match
+  #    this pilot's api resource request (200m CPU / 384Mi request, 512Mi limit).
+  GUNICORN_WORKERS: "2"

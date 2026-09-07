@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Service
+metadata:
+  # Bare name, not release-derived: the official Plane Caddyfile (verified
+  # directly against the pinned makeplane/plane-proxy:v1.3.1 image's
+  # /etc/caddy/Caddyfile) hardcodes `reverse_proxy /* web:3000` (the
+  # catch-all route) as a literal upstream host. Must be named exactly
+  # `web` for Task 5's Caddy to resolve it. Safe in this chart's dedicated
+  # `plane` namespace.
+  name: web
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  ports:
+    - name: web
+      port: {{ .Values.ports.web }}
+      targetPort: web
+      protocol: TCP
+  selector:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plane.fullname" . }}-web
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plane.labels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      containers:
+        # No command/args override: runs the pinned image's own default CMD
+        # (nginx -g "daemon off;", verified via `docker inspect`). The
+        # frontend is a fully static, build-time-baked SPA — its own
+        # nginx.conf (verified inside the pinned image) has a single
+        # `server { listen 3000; }` block with no runtime env templating,
+        # so no application environment variables are needed here.
+        - name: web
+          image: "{{ .Values.image.plane.repository }}/plane-frontend:{{ .Values.image.plane.tag }}@{{ .Values.image.plane.digests.frontend }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - name: web
+              containerPort: {{ .Values.ports.web }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources.web | nindent 12 }}
+          # Plain TCP check per this task's probe contract (values.yaml
+          # probes.web.tcp.port) — the frontend serves no dedicated health
+          # endpoint.
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.web.tcp.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: {{ .Values.probes.web.tcp.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

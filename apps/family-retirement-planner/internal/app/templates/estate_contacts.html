@@ -1,0 +1,84 @@
+{{define "estate_contacts.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Estate contacts</h1>
+{{template "estate-disclaimer" .}}
+
+<div class="card">
+  <h2>Add contact</h2>
+  <form method="post">
+    {{template "csrf" .}}
+    <div class="dashboard-grid">
+      <div class="form-group">
+        <label>Role (executor, attorney, trustee, guardian, other)
+          <input name="role" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Name
+          <input name="name" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Contact information
+          <input name="contact_info">
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Notes
+          <textarea name="notes"></textarea>
+        </label>
+      </div>
+    </div>
+    <button type="submit">Add contact</button>
+  </form>
+</div>
+
+<h2>Recorded contacts</h2>
+{{if .Items}}
+<ul class="card-list">
+  {{range .Items}}
+  <li class="card">
+    <form method="post" action="{{$.EstateBase}}/contacts/{{.ID}}/update">
+      {{template "csrf" $}}
+      <div class="form-group">
+        <label>Role
+          <input name="role" value="{{.Role}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Name
+          <input name="name" value="{{.Name}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Contact information
+          <input name="contact_info" value="{{.ContactInfo}}">
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Notes
+          <textarea name="notes">{{.Notes}}</textarea>
+        </label>
+      </div>
+      <button type="submit" class="outline button-block">Update</button>
+    </form>
+    
+    <div class="card-actions">
+      <form method="post" action="{{$.EstateBase}}/contacts/{{.ID}}/delete">
+        {{template "csrf" $}}
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<div class="empty-state">
+  <p>No contacts recorded.</p>
+</div>
+{{end}}
+
+{{template "footer" .}}
+{{end}}

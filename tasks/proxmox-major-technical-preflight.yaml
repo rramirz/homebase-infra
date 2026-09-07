@@ -1,0 +1,282 @@
+---
+- name: Read installed Proxmox version
+  ansible.builtin.command:
+    argv: [pveversion]
+  changed_when: false
+  register: pveversion_result
+
+- name: Assert PVE 8 and Debian bookworm source state
+  ansible.builtin.assert:
+    that:
+      - pveversion_result.stdout is match('^pve-manager/' ~ transition.source_pve_major ~ '\\.4\\.')
+      - ansible_distribution_release == transition.source_debian_codename
+    fail_msg: >-
+      Expected PVE {{ transition.source_pve_major }} / Debian {{ transition.source_debian_codename }};
+      found {{ pveversion_result.stdout }} / {{ ansible_distribution_release }}.
+
+- name: Check upgrade checker availability
+  ansible.builtin.command:
+    argv: [which, '{{ transition.checker }}']
+  changed_when: false
+
+- name: Run official upgrade checker
+  ansible.builtin.command:
+    argv: ['{{ transition.checker }}', --full]
+  changed_when: false
+  failed_when: false
+  register: upgrade_checker
+
+- name: Audit dpkg package state
+  ansible.builtin.command:
+    argv: [dpkg, --audit]
+  changed_when: false
+  register: dpkg_audit
+
+- name: Require clean dpkg audit
+  ansible.builtin.assert:
+    that: dpkg_audit.stdout | trim == ''
+    fail_msg: "dpkg --audit is not clean: {{ dpkg_audit.stdout }}"
+
+- name: List held packages
+  ansible.builtin.command:
+    argv: [apt-mark, showhold]
+  changed_when: false
+  register: apt_holds
+
+- name: Require no held packages
+  ansible.builtin.assert:
+    that: apt_holds.stdout | trim == ''
+    fail_msg: "Held packages block a deterministic major upgrade: {{ apt_holds.stdout }}"
+
+- name: Require no preexisting reboot requirement
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: preexisting_reboot_required
+
+- name: Refuse major upgrade with a pending reboot
+  ansible.builtin.assert:
+    that: not preexisting_reboot_required.stat.exists
+    fail_msg: Complete the pending reboot through normal maintenance, then rerun major preflight.
+
+- name: Gather root filesystem facts
+  ansible.builtin.setup:
+    gather_subset: ['!all', '!min', hardware]
+
+- name: Select root filesystem fact
+  ansible.builtin.set_fact:
+    root_mount: "{{ ansible_mounts | selectattr('mount', 'equalto', '/') | first }}"
+
+- name: Require at least 10 GiB free on root filesystem
+  ansible.builtin.assert:
+    that: root_mount.size_available | int >= 10737418240
+    fail_msg: "Root filesystem has less than 10 GiB free: {{ root_mount.size_available }} bytes."
+
+- name: Read Proxmox storage status
+  ansible.builtin.command:
+    argv: [pvesm, status]
+  changed_when: false
+  register: storage_status
+
+- name: Require all configured storage active
+  ansible.builtin.assert:
+    that: storage_status.stdout_lines | select('search', '\\sinactive\\s') | list | length == 0
+    fail_msg: "Inactive Proxmox storage detected: {{ storage_status.stdout }}"
+
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Read ZFS pool health when ZFS utilities are installed
+  ansible.builtin.command:
+    argv: [zpool, status, -x]
+  changed_when: false
+  register: zpool_status
+  when: "'zfsutils-linux' in ansible_facts.packages"
+
+- name: Require healthy ZFS pools when present
+  vars:
+    # pool-less hosts emit "no pools available" on stderr; assert on stdout+stderr
+    zpool_output: "{{ (zpool_status.stdout | default('')) ~ (zpool_status.stderr | default('')) }}"
+  ansible.builtin.assert:
+    that: >-
+      'zfsutils-linux' not in ansible_facts.packages or
+      'all pools are healthy' in zpool_output or
+      'no pools available' in zpool_output
+    fail_msg: "ZFS pool health is not clean: {{ zpool_output }}"
+
+- name: List running guests
+  ansible.builtin.command:
+    argv: [pvesh, get, /cluster/resources, '--type', vm, '--output-format', json]
+  changed_when: false
+  register: guest_inventory
+
+- name: Parse guest inventory
+  ansible.builtin.set_fact:
+    running_guests: "{{ (guest_inventory.stdout | from_json) | selectattr('status', 'equalto', 'running') | list }}"
+
+- name: Require outage acknowledgement when guests are running
+  ansible.builtin.assert:
+    that: running_guests | length == 0 or outage_acknowledged | bool
+    fail_msg: >-
+      Running guests require outage_acknowledged=true. Running guests:
+      {{ running_guests | map(attribute='name') | join(', ') }}
+
+- name: Detect systemd-boot meta-package blocker
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, '-f=${Status}', systemd-boot]
+  changed_when: false
+  failed_when: false
+  register: systemd_boot_package
+
+- name: Detect removable GRUB warning from checker output
+  ansible.builtin.set_fact:
+    grub_removable_warning: >-
+      {{ (upgrade_checker.stdout ~ '\n' ~ upgrade_checker.stderr) is search('(?i)(grub.*removable|removable.*grub)') }}
+
+- name: Read CT100 legacy cgroup configuration on pve-1
+  ansible.builtin.command:
+    argv: [pct, config, '100']
+  changed_when: false
+  failed_when: false
+  register: ct100_config
+  when: inventory_hostname == 'pve-1'
+
+- name: Read NVIDIA DKMS status on pve-1
+  ansible.builtin.command:
+    argv: [dkms, status]
+  changed_when: false
+  failed_when: false
+  register: nvidia_dkms
+  when: inventory_hostname == 'pve-1'
+
+- name: Read non-comment sysctl settings on pve-2
+  ansible.builtin.command:
+    argv: [grep, -Ev, '^\s*(#|$)', /etc/sysctl.conf]
+  changed_when: false
+  failed_when: false
+  register: sysctl_settings
+  when: inventory_hostname == 'pve-2'
+
+- name: Report host-specific blockers without repairing them
+  ansible.builtin.debug:
+    msg:
+      systemd_boot_meta_package: "{{ systemd_boot_package.stdout == 'install ok installed' }}"
+      grub_removable_warning: "{{ grub_removable_warning }}"
+      pve1_ct100_legacy_cgroup: "{{ inventory_hostname == 'pve-1' and (ct100_config.stdout | default('')) is search('(?m)^lxc\\.cgroup\\.') }}"
+      pve1_nvidia_dkms: "{{ inventory_hostname == 'pve-1' and (nvidia_dkms.stdout | default('')) is search('(?i)nvidia') }}"
+      pve2_sysctl_settings: "{{ inventory_hostname == 'pve-2' and (sysctl_settings.stdout | default('') | trim != '') }}"
+
+- name: Fail on known boot and host-specific blockers
+  ansible.builtin.assert:
+    that:
+      - systemd_boot_package.stdout != 'install ok installed'
+      - not grub_removable_warning
+      - inventory_hostname != 'pve-1' or not ((ct100_config.stdout | default('')) is search('(?m)^lxc\\.cgroup\\.'))
+      - inventory_hostname != 'pve-1' or not ((nvidia_dkms.stdout | default('')) is search('(?i)nvidia'))
+      - inventory_hostname != 'pve-2' or (sysctl_settings.stdout | default('') | trim == '')
+    fail_msg: >-
+      Known boot/LXC/DKMS/sysctl blocker detected. This automation never removes systemd-boot,
+      repairs GRUB, rewrites CT100 cgroups, changes NVIDIA DKMS, or migrates sysctl settings.
+
+- name: Find supported apt source files
+  ansible.builtin.find:
+    paths: [/etc/apt]
+    patterns: ['*.list', '*.sources']
+    recurse: true
+    file_type: file
+  register: apt_source_files
+
+- name: Read apt source files
+  ansible.builtin.slurp:
+    src: '{{ item.path }}'
+  loop: '{{ apt_source_files.files }}'
+  register: apt_source_contents
+
+- name: Identify unsupported active apt source files
+  ansible.builtin.set_fact:
+    unsupported_active_sources: "{{ (unsupported_active_sources | default([])) + [item.item.path] }}"
+  loop: '{{ apt_source_contents.results }}'
+  when:
+    - item.item.path not in transition.allowed_source_files
+    - (item.content | b64decode) is search('(?m)^\\s*(deb |URIs:)')
+
+- name: Require only allowlisted active Debian and PVE source files
+  ansible.builtin.assert:
+    that: unsupported_active_sources | default([]) | length == 0
+    fail_msg: "Unsupported active apt source files require manual review: {{ unsupported_active_sources | default([]) | join(', ') }}"
+
+- name: Collect active deb-format source lines
+  ansible.builtin.set_fact:
+    active_source_lines: "{{ (active_source_lines | default([])) + ((item.content | b64decode) | regex_findall('(?m)^\\s*deb(?:-src)?\\s+.*$')) }}"
+  loop: '{{ apt_source_contents.results }}'
+
+- name: Collect active Proxmox PVE source lines
+  ansible.builtin.set_fact:
+    active_pve_source_lines: "{{ (active_pve_source_lines | default([])) + [item] }}"
+  loop: '{{ active_source_lines | default([]) }}'
+  when: item is search('proxmox\\.com/debian/pve')
+
+- name: Identify invalid active PVE source lines
+  ansible.builtin.set_fact:
+    invalid_pve_source_lines: "{{ (invalid_pve_source_lines | default([])) + [item] }}"
+  loop: '{{ active_pve_source_lines | default([]) }}'
+  when: item is not match('^\\s*deb\\s+http://download\\.proxmox\\.com/debian/pve\\s+bookworm\\s+pve-no-subscription\\s*$')
+
+- name: Identify invalid active Debian source lines
+  ansible.builtin.set_fact:
+    invalid_debian_source_lines: "{{ (invalid_debian_source_lines | default([])) + [item] }}"
+  loop: '{{ active_source_lines | default([]) }}'
+  when:
+    - item is not search('proxmox\\.com/debian/pve')
+    - item is not match('^\\s*deb(?:-src)?\\s+(?:\\[[^]]+\\]\\s+)?https?://(?:(?:deb|security)\\.debian\\.org|ftp\\.[^/]+\\.debian\\.org)/\\S*\\s+(?:bookworm|bookworm-updates|bookworm-security)\\s+.+$')
+
+- name: Collect recognized active Debian list sources
+  ansible.builtin.set_fact:
+    active_debian_source_lines: "{{ (active_debian_source_lines | default([])) + [item] }}"
+  loop: '{{ active_source_lines | default([]) }}'
+  when: item is not search('proxmox\\.com/debian/pve')
+
+- name: Identify invalid active deb822 source definitions
+  ansible.builtin.set_fact:
+    invalid_deb822_source_files: "{{ (invalid_deb822_source_files | default([])) + [item.item.path] }}"
+  loop: '{{ apt_source_contents.results }}'
+  when:
+    - (item.content | b64decode) is search('(?m)^\\s*URIs:')
+    - >-
+      (item.content | b64decode) is not search(
+      '(?m)^\\s*URIs:\\s+https?://(?:(?:deb|security)\\.debian\\.org|ftp\\.[^/]+\\.debian\\.org)/')
+      or (item.content | b64decode) is not search(
+      '(?m)^\\s*Suites:\\s*(?:bookworm|bookworm-updates|bookworm-security)\\s*$')
+
+- name: Collect recognized active Debian deb822 source definitions
+  ansible.builtin.set_fact:
+    active_deb822_source_files: "{{ (active_deb822_source_files | default([])) + [item.item.path] }}"
+  loop: '{{ apt_source_contents.results }}'
+  when:
+    - (item.content | b64decode) is search('(?m)^\\s*URIs:\\s+https?://(?:(?:deb|security)\\.debian\\.org|ftp\\.[^/]+\\.debian\\.org)/')
+    - (item.content | b64decode) is search('(?m)^\\s*Suites:\\s*(?:bookworm|bookworm-updates|bookworm-security)\\s*$')
+
+- name: Require semantic bookworm Debian and PVE source state
+  ansible.builtin.assert:
+    that:
+      - active_pve_source_lines | default([]) | length == 1
+      - invalid_pve_source_lines | default([]) | length == 0
+      - invalid_debian_source_lines | default([]) | length == 0
+      - invalid_deb822_source_files | default([]) | length == 0
+      - (active_debian_source_lines | default([]) | length) + (active_deb822_source_files | default([]) | length) > 0
+    fail_msg: >-
+      Source suites/channels are not the required one-PVE-channel bookworm state. Resolve duplicate,
+      contradictory, trixie, or wrong-suite sources manually before any major-upgrade apt mutation.
+
+- name: Report final technical preflight checker state
+  ansible.builtin.debug:
+    msg:
+      checker: '{{ transition.checker }}'
+      rc: '{{ upgrade_checker.rc }}'
+      stdout: '{{ upgrade_checker.stdout }}'
+      stderr: '{{ upgrade_checker.stderr }}'
+
+- name: Require clean official upgrade checker after all read-only audits
+  ansible.builtin.assert:
+    that: upgrade_checker.rc == 0
+    fail_msg: "{{ transition.checker }} --full failed. Resolve every reported blocker manually before continuing."

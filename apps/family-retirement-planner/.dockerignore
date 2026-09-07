@@ -1,0 +1,12 @@
+**/.git
+**/.env*
+!**/.env.example
+**/secret-values*.yaml
+**/*credentials*.yaml
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.bak
+**/*.backup
+tmp/

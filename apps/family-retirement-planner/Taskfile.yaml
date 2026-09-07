@@ -1,0 +1,26 @@
+version: '3'
+tasks:
+  test:
+    desc: Run unit tests
+    cmds: [go test ./...]
+  vet:
+    desc: Run Go static analysis
+    cmds: [go vet ./...]
+  run:
+    desc: Run local web server
+    cmds: [go run ./cmd/server]
+  integration:
+    desc: Run PostgreSQL isolation tests with Docker
+    cmds:
+      - docker compose up -d --wait postgres
+      - TEST_DATABASE_URL=postgres://retirement:retirement@localhost:5432/retirement?sslmode=disable go test -tags=integration ./...
+      - docker compose down -v
+  verify:
+    desc: Run static app and chart checks
+    cmds:
+      - test -z "$(gofmt -l .)"
+      - go vet ./...
+      - go test ./...
+      - GOTOOLCHAIN=go1.26.6 govulncheck ./...
+      - helm lint chart -f chart/values.yaml -f chart/secret-values.example.yaml
+      - helm template family-retirement-planner chart -n family-retirement-planner -f chart/values.yaml -f chart/secret-values.example.yaml >/tmp/family-retirement-planner-render.yaml

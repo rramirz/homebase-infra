@@ -1,0 +1,76 @@
+---
+# Deliberately supports one transition at a time. Add future transitions to
+# major_transitions only after their official checker and source policy exist.
+- name: Run a guarded Proxmox VE major-upgrade phase
+  hosts: proxmox
+  gather_facts: true
+  vars:
+    phase: preflight
+    pve_host: ""
+    backup_verified: false
+    outage_acknowledged: false
+    reboot_confirmed: false
+    major_transitions:
+      pve8to9:
+        source_pve_major: '8'
+        source_debian_codename: bookworm
+        target_pve_major: '9'
+        target_debian_codename: trixie
+        checker: pve8to9
+        target_kernel_package_regex: '^proxmox-kernel-(?:6[.](?:14|17)|(?:[7-9]|[1-9][0-9]+)[.][0-9]+)'
+        target_kernel_concrete_package_regex: '^proxmox-kernel-(?:6[.](?:14|17)|(?:[7-9]|[1-9][0-9]+)[.][0-9]+)[.].*-pve-signed'
+        target_kernel_release_regex: '^(?:6[.](?:14|17)|(?:[7-9]|[1-9][0-9]+)[.][0-9]+)[.].*-pve$'
+        target_debian_sources: |
+          deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
+          deb http://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
+        pve_no_subscription_source: "deb http://download.proxmox.com/debian/pve trixie pve-no-subscription"
+        disabled_pve_source_content: "# Disabled by proxmox-major-upgrade.yaml; pve-no-subscription is the standardized channel.\n"
+        allowed_source_files:
+          - /etc/apt/sources.list
+          - /etc/apt/sources.list.d/debian.sources
+          - /etc/apt/sources.list.d/pve-enterprise.list
+          - /etc/apt/sources.list.d/pve-enterprise.sources
+          - /etc/apt/sources.list.d/pve-install-repo.list
+          - /etc/apt/sources.list.d/pve-no-subscription.list
+  pre_tasks:
+    - name: Select the current transition
+      ansible.builtin.set_fact:
+        transition: "{{ major_transitions.pve8to9 }}"
+
+    - name: Assert one explicitly allowed target was selected
+      ansible.builtin.assert:
+        that:
+          - pve_host in ['pve-1', 'pve-2']
+          - inventory_hostname == pve_host
+          - ansible_play_hosts_all | length == 1
+        fail_msg: >-
+          Major-upgrade phases require exactly one --limit-selected PVE_HOST
+          (pve-1 or pve-2). Refusing a broad or mismatched run.
+
+    - name: Assert supported phase
+      ansible.builtin.assert:
+        that:
+          - phase in ['preflight', 'upgrade', 'resume', 'reboot', 'verify']
+        fail_msg: "Unsupported phase {{ phase }}"
+
+  tasks:
+    - name: Run preflight phase
+      ansible.builtin.include_tasks: tasks/proxmox-major-preflight.yaml
+      when: phase == 'preflight'
+
+    - name: Run upgrade phase
+      ansible.builtin.include_tasks: tasks/proxmox-major-upgrade.yaml
+      when: phase == 'upgrade'
+
+    - name: Run reboot phase
+      ansible.builtin.include_tasks: tasks/proxmox-major-reboot.yaml
+      when: phase == 'reboot'
+
+    - name: Run guarded resume phase
+      ansible.builtin.include_tasks: tasks/proxmox-major-resume.yaml
+      when: phase == 'resume'
+
+    - name: Run verify phase
+      ansible.builtin.include_tasks: tasks/proxmox-major-verify.yaml
+      when: phase == 'verify'

@@ -1,0 +1,259 @@
+{{define "estate_assets.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Assets, ownership, designations, and trusts</h1>
+{{template "estate-disclaimer" .}}
+
+<p class="help-text">Transfer method is a user-entered modeling assumption. Confirm actual title, account contract, beneficiary form, and trust funding.</p>
+
+<h2>Add trust</h2>
+<form method="post" action="{{.EstateBase}}/trusts">
+  {{template "csrf" .}}
+  <div class="dashboard-grid">
+    <div class="form-group">
+      <label>Trust name
+        <input name="name" required>
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Notes
+        <textarea name="notes"></textarea>
+      </label>
+    </div>
+  </div>
+  <button type="submit">Add trust</button>
+</form>
+
+<ul class="card-list">
+  {{range .Trusts}}
+  <li class="card">
+    <form method="post" action="{{$.EstateBase}}/trusts/{{.ID}}/update">
+      {{template "csrf" $}}
+      <div class="form-group">
+        <label>Name
+          <input name="name" value="{{.Name}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Notes
+          <textarea name="notes">{{.Notes}}</textarea>
+        </label>
+      </div>
+      <button type="submit" class="outline button-spaced">Update trust</button>
+    </form>
+
+    <h3>Trust allocations</h3>
+    <ul>
+      {{range .Designations}}
+      <li>
+        {{.BeneficiaryName}} &mdash; {{.SharePercent}} ({{.Tier}})
+        <form class="inline" method="post" action="{{$.EstateBase}}/trust-designations/{{.ID}}/delete">
+          {{template "csrf" $}}
+          <button type="submit" class="danger">Remove</button>
+        </form>
+      </li>
+      {{else}}
+      <li class="text-muted">None recorded.</li>
+      {{end}}
+    </ul>
+
+    <form method="post" action="{{$.EstateBase}}/trusts/{{.ID}}/designations" class="form-spaced">
+      {{template "csrf" $}}
+      <div class="form-group">
+        <label>Beneficiary</label>
+        {{template "beneficiary-select" $}}
+      </div>
+      <div class="form-group">
+        <label>Share (enter as decimal 0–1, e.g. 0.5)
+          <input name="share_percent" value="1" required>
+        </label>
+      </div>
+      <div class="form-group"><label>Tier<select name="tier"><option value="primary">Primary</option><option value="contingent">Contingent</option></select></label></div>
+      <button type="submit">Add allocation</button>
+    </form>
+
+    <div class="card-actions">
+      <form method="post" action="{{$.EstateBase}}/trusts/{{.ID}}/delete">
+        {{template "csrf" $}}
+        <button type="submit" class="danger">Delete trust</button>
+      </form>
+    </div>
+  </li>
+  {{end}}
+</ul>
+
+<h2>Add asset</h2>
+<form method="post" action="{{.EstateBase}}/assets">
+  {{template "csrf" .}}
+  <div class="dashboard-grid">
+    <div class="form-group">
+      <label>Name
+        <input name="name" required>
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Value
+        <input name="value" inputmode="decimal" value="0" required>
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Transfer method
+        <select name="transfer_method">
+          <option value="probate">Probate</option>
+          <option value="wros">Joint ownership with survivorship (WROS)</option>
+          <option value="designation">TOD/POD or beneficiary designation</option>
+          <option value="trust">Trust</option>
+        </select>
+      </label>
+      <p class="help-text">How this asset will legally transfer upon death.</p>
+    </div>
+    <div class="form-group">
+      <label>Trust (required only for trust transfer)
+        <select name="trust_id">
+          <option value="">None</option>
+          {{range .Trusts}}
+          <option value="{{.ID}}">{{.Name}}</option>
+          {{end}}
+        </select>
+      </label>
+    </div>
+    <div class="form-group">
+      <label>
+        <input class="checkbox" type="checkbox" name="liquid" value="true"> Liquid for modeled obligations
+      </label>
+      <p class="help-text">Can this asset be quickly sold to cover debts/taxes?</p>
+    </div>
+  </div>
+  <button type="submit">Add asset</button>
+</form>
+
+<h2>Recorded assets</h2>
+{{if .Assets}}
+  <div class="card-list">
+  {{range .Assets}}
+  <article class="card card-spaced">
+    <form method="post" action="{{$.EstateBase}}/assets/{{.ID}}/update">
+      {{template "csrf" $}}
+      <div class="dashboard-grid">
+        <div class="form-group">
+          <label>Name
+            <input name="name" value="{{.Name}}" required>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Value
+            <input name="value" value="{{.Value}}" required>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Transfer method
+            <select name="transfer_method">
+              <option value="{{.TransferMethod}}">Current: {{.TransferMethod}}</option>
+              <option value="probate">Probate</option>
+              <option value="wros">WROS</option>
+              <option value="designation">Designation</option>
+              <option value="trust">Trust</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Trust
+            <select name="trust_id">
+              <option value="{{.TrustID}}">
+                {{if .TrustName}}{{.TrustName}}{{else}}None{{end}}
+              </option>
+              {{range $.Trusts}}
+              <option value="{{.ID}}">{{.Name}}</option>
+              {{end}}
+              <option value="">None</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>
+            <input class="checkbox" type="checkbox" name="liquid" value="true" {{if .Liquid}}checked{{end}}> Liquid
+          </label>
+        </div>
+      </div>
+      <button type="submit" class="outline button-spaced">Update asset</button>
+    </form>
+    
+    <hr class="hr-spaced">
+
+    <div class="dashboard-grid">
+      <section>
+        <h3>Owners</h3>
+        <ul>
+          {{range .Owners}}
+          <li>
+            {{.Name}}
+            <form class="inline" method="post" action="{{$.EstateBase}}/asset-owners/{{.ID}}/delete">
+              {{template "csrf" $}}
+              <button type="submit" class="danger">Remove</button>
+            </form>
+          </li>
+          {{else}}
+          <li class="text-muted">None recorded.</li>
+          {{end}}
+        </ul>
+        <form method="post" action="{{$.EstateBase}}/assets/{{.ID}}/owners" class="form-spaced">
+          {{template "csrf" $}}
+          <div class="form-group">
+            <label>Owner name
+              <input name="owner_name" required>
+            </label>
+          </div>
+          <button type="submit">Add owner</button>
+        </form>
+      </section>
+      
+      <section>
+        <h3>Direct designations</h3>
+        <ul>
+          {{range .Designations}}
+          <li>
+            {{.BeneficiaryName}} &mdash; {{.SharePercent}} ({{.Tier}})
+            <form class="inline" method="post" action="{{$.EstateBase}}/asset-designations/{{.ID}}/delete">
+              {{template "csrf" $}}
+              <button type="submit" class="danger">Remove</button>
+            </form>
+          </li>
+          {{else}}
+          <li class="text-muted">None recorded.</li>
+          {{end}}
+        </ul>
+        <form method="post" action="{{$.EstateBase}}/assets/{{.ID}}/designations" class="form-spaced">
+          {{template "csrf" $}}
+          <div class="form-group">
+            <label>Beneficiary</label>
+            {{template "beneficiary-select" $}}
+          </div>
+          <div class="form-group">
+            <label>Share (enter as decimal 0–1)
+              <input name="share_percent" value="1" required>
+            </label>
+          </div>
+          <div class="form-group"><label>Tier<select name="tier"><option value="primary">Primary</option><option value="contingent">Contingent</option></select></label></div>
+          <button type="submit">Add designation</button>
+        </form>
+      </section>
+    </div>
+    
+    <div class="card-actions mt-lg">
+      <form method="post" action="{{$.EstateBase}}/assets/{{.ID}}/delete">
+        {{template "csrf" $}}
+        <button type="submit" class="danger">Delete asset</button>
+      </form>
+    </div>
+  </article>
+  {{end}}
+  </div>
+{{else}}
+  <div class="empty-state">
+    <p>No assets recorded. Add your first asset above.</p>
+  </div>
+{{end}}
+
+{{template "footer" .}}
+{{end}}

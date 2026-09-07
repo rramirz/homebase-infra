@@ -1,0 +1,21 @@
+{{define "estate_invalid.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Scenario needs corrections</h1>
+{{template "estate-disclaimer" .}}
+
+<div class="alert alert-danger">
+  <ul class="m-0 pl-md">
+    {{range .Errors}}
+    <li>{{.}}</li>
+    {{end}}
+  </ul>
+</div>
+
+<p class="mt-xl">
+  <a class="button outline" href="{{.EstateBase}}/scenarios">&larr; Return to scenarios</a>
+</p>
+
+{{template "footer" .}}
+{{end}}

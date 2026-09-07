@@ -1,0 +1,90 @@
+{{define "estate_documents.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Legal document inventory</h1>
+{{template "estate-disclaimer" .}}
+<p class="help-text">Record existence and storage location only. This app does not create or validate documents.</p>
+
+<div class="card">
+  <h2>Add document</h2>
+  <form method="post">
+    {{template "csrf" .}}
+    <div class="dashboard-grid">
+      <div class="form-group">
+        <label>Document type
+          <input name="document_type" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Storage location
+          <input name="storage_location" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Status
+          <select name="status">
+            <option value="unknown">Unknown</option>
+            <option value="draft">Draft</option>
+            <option value="signed">Signed</option>
+            <option value="needs_review">Needs review</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Notes
+          <textarea name="notes"></textarea>
+        </label>
+      </div>
+    </div>
+    <button type="submit">Add document</button>
+  </form>
+</div>
+
+<h2>Recorded documents</h2>
+{{if .Items}}
+<ul class="card-list">
+  {{range .Items}}
+  <li class="card">
+    <form method="post" action="{{$.EstateBase}}/documents/{{.ID}}/update">
+      {{template "csrf" $}}
+      <div class="form-group">
+        <label>Type
+          <input name="document_type" value="{{.DocumentType}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Storage location
+          <input name="storage_location" value="{{.StorageLocation}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Status
+          <input name="status" value="{{.Status}}" required>
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Notes
+          <textarea name="notes">{{.Notes}}</textarea>
+        </label>
+      </div>
+      <button type="submit" class="outline button-block">Update</button>
+    </form>
+    
+    <div class="card-actions">
+      <form method="post" action="{{$.EstateBase}}/documents/{{.ID}}/delete">
+        {{template "csrf" $}}
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </div>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<div class="empty-state">
+  <p>No documents recorded.</p>
+</div>
+{{end}}
+
+{{template "footer" .}}
+{{end}}

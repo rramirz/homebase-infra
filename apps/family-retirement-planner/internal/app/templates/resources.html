@@ -1,0 +1,121 @@
+{{define "resources.html"}}{{template "header" .}}
+<h1>{{.Title}}</h1>
+<div class="sub-nav">
+    {{range .Links}}<a href="{{.URL}}">{{.Name}}</a>{{end}}
+</div>
+
+<h2>Create New</h2>
+<form method="post">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    
+    <div class="dashboard-grid">
+        <div class="form-group">
+            <label>Name</label>
+            <input name="name" required>
+        </div>
+        
+        {{if .Kinds}}
+        <div class="form-group">
+            <label>Kind</label>
+            <select name="kind">
+                {{range .Kinds}}<option>{{.}}</option>{{end}}
+            </select>
+        </div>
+        {{end}}
+        
+        <div class="form-group">
+            <label>{{.AmountLabel}}</label>
+            <input name="amount" value="0" required>
+        </div>
+        
+        {{if .Years}}
+        <div class="form-group">
+            <label>Start/birth year</label>
+            <input name="start_year" value="2025" required>
+        </div>
+        <div class="form-group">
+            <label>End/retirement/death year</label>
+            <input name="end_year">
+        </div>
+        {{end}}
+        
+        {{if .Rate}}
+        <div class="form-group">
+            <label>Rate</label>
+            <input name="inflation" value="0">
+        </div>
+        {{end}}
+        
+        <div class="form-group">
+            <label>Confidence</label>
+            <select name="confidence">
+                <option value="unknown">Unknown</option>
+                <option value="estimated">Estimated</option>
+                <option value="verified">Verified</option>
+            </select>
+        </div>
+    </div>
+    
+    <button>Add</button>
+</form>
+
+<h2>Existing Items</h2>
+<ul class="card-list">
+{{range .Items}}
+    <li class="card">
+        <form method="post" action="{{$.DeletePrefix}}/{{.ID}}/update">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <div class="form-group">
+                <label>Name</label>
+                <input name="name" value="{{.Name}}" required>
+            </div>
+            
+            {{if $.Kinds}}
+            <div class="form-group">
+                <label>Kind</label>
+                <input name="kind" value="{{.Kind}}">
+            </div>
+            {{end}}
+            
+            <div class="form-group">
+                <label>{{$.AmountLabel}}</label>
+                <input name="amount" value="{{.Amount}}" required>
+            </div>
+            
+            {{if $.Years}}
+            <div class="form-group">
+                <label>Start/birth year</label>
+                <input name="start_year" value="{{.StartYear}}" required>
+            </div>
+            <div class="form-group">
+                <label>End/retirement/death year</label>
+                <input name="end_year" value="{{.EndYear}}">
+            </div>
+            {{end}}
+            
+            {{if $.Rate}}
+            <div class="form-group">
+                <label>Rate</label>
+                <input name="inflation" value="{{.Inflation}}">
+            </div>
+            {{end}}
+            
+            <div class="form-group">
+                <label>Confidence</label>
+                <select name="confidence">
+                    <option value="unknown" {{if eq .Confidence "unknown"}}selected{{end}}>Unknown</option>
+                    <option value="estimated" {{if eq .Confidence "estimated"}}selected{{end}}>Estimated</option>
+                    <option value="verified" {{if eq .Confidence "verified"}}selected{{end}}>Verified</option>
+                </select>
+            </div>
+            
+            <button class="outline button-block button-spaced">Update</button>
+        </form>
+        <form method="post" action="{{$.DeletePrefix}}/{{.ID}}/delete">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <button class="danger button-block">Delete</button>
+        </form>
+    </li>
+{{end}}
+</ul>
+{{template "footer" .}}{{end}}

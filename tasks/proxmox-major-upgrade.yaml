@@ -1,0 +1,213 @@
+---
+- name: Require upgrade acknowledgements
+  ansible.builtin.include_tasks: tasks/proxmox-major-acknowledgements.yaml
+
+- name: Run shared technical preflight before apt mutation
+  ansible.builtin.include_tasks: tasks/proxmox-major-technical-preflight.yaml
+
+- name: Read installed Proxmox version before apt mutation
+  ansible.builtin.command:
+    argv: [pveversion]
+  changed_when: false
+  register: source_pveversion
+
+- name: Find apt source files before apt mutation
+  ansible.builtin.find:
+    paths: [/etc/apt]
+    patterns: ['*.list', '*.sources']
+    recurse: true
+    file_type: file
+  register: source_files_before_update
+
+- name: Read apt source files before apt mutation
+  ansible.builtin.slurp:
+    src: '{{ item.path }}'
+  loop: '{{ source_files_before_update.files }}'
+  register: source_contents_before_update
+
+- name: Identify partially migrated target sources
+  ansible.builtin.set_fact:
+    target_codename_source_files: "{{ (target_codename_source_files | default([])) + [item.item.path] }}"
+  loop: '{{ source_contents_before_update.results }}'
+  when: >-
+    (item.content | b64decode) is search(
+    '(?m)^\\s*(?:deb(?:-src)?\\s+.*\\b|Suites:\\s*.*\\b)' ~ transition.target_debian_codename ~ '\\b')
+
+- name: Identify unsupported active source files before apt mutation
+  ansible.builtin.set_fact:
+    unsupported_active_sources: "{{ (unsupported_active_sources | default([])) + [item.item.path] }}"
+  loop: '{{ source_contents_before_update.results }}'
+  when:
+    - item.item.path not in transition.allowed_source_files
+    - (item.content | b64decode) is search('(?m)^\\s*(deb |URIs:)')
+
+- name: Assert clean PVE 8.4 and bookworm source state
+  ansible.builtin.assert:
+    that:
+      - source_pveversion.stdout is match('^pve-manager/' ~ transition.source_pve_major ~ '\\.4\\.')
+      - ansible_distribution_release == transition.source_debian_codename
+      - target_codename_source_files | default([]) | length == 0
+      - unsupported_active_sources | default([]) | length == 0
+    fail_msg: >-
+      Refusing apt mutation because this host is not a clean PVE 8.4/bookworm source state or has
+      partial trixie or unsupported active sources. Restore/reconcile apt sources from verified recovery
+      evidence, then rerun preflight; do not rerun this phase against a partially migrated host.
+
+- name: Check upgrade checker availability before apt mutation
+  ansible.builtin.command:
+    argv: [which, '{{ transition.checker }}']
+  changed_when: false
+
+- name: Audit dpkg package state before apt mutation
+  ansible.builtin.command:
+    argv: [dpkg, --audit]
+  changed_when: false
+  register: source_dpkg_audit
+
+- name: Require clean dpkg state before apt mutation
+  ansible.builtin.assert:
+    that: source_dpkg_audit.stdout | trim == ''
+    fail_msg: "Refusing apt mutation because dpkg --audit is not clean: {{ source_dpkg_audit.stdout }}"
+
+- name: Refresh apt cache for current PVE 8 sources
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+
+- name: Read current PVE 8 apt candidates
+  ansible.builtin.command:
+    argv: [apt-cache, policy, pve-manager, proxmox-ve]
+  changed_when: false
+  register: source_pve_candidates
+
+- name: Require current PVE 8 apt candidates
+  ansible.builtin.assert:
+    that: source_pve_candidates.stdout | regex_findall('(?m)^\\s*Candidate:\\s*8\\.') | length == 2
+    fail_msg: "Expected PVE 8 candidates for pve-manager and proxmox-ve: {{ source_pve_candidates.stdout }}"
+
+- name: Simulate current PVE 8 dist-upgrade
+  ansible.builtin.command:
+    argv: [apt-get, -s, dist-upgrade]
+  changed_when: false
+  register: source_upgrade_simulation
+
+- name: Reject protected Proxmox package removal from current PVE 8 simulation
+  ansible.builtin.assert:
+    that: source_upgrade_simulation.stdout is not search('(?m)^Remv\\s+(?:proxmox-ve|pve-manager|proxmox-default-kernel|proxmox-kernel-helper)\\b')
+    fail_msg: "Current PVE 8 simulation removes a protected Proxmox package: {{ source_upgrade_simulation.stdout }}"
+
+- name: Dist-upgrade current PVE 8 packages after safety checks
+  ansible.builtin.apt:
+    upgrade: dist
+
+- name: Read current PVE 8 version after dist-upgrade
+  ansible.builtin.command:
+    argv: [pveversion]
+  changed_when: false
+  register: source_pveversion_after_upgrade
+
+- name: Read protected Proxmox package state after current dist-upgrade
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, '-f=${binary:Package} ${Version} ${Status}\n', proxmox-ve, pve-manager, proxmox-default-kernel, proxmox-kernel-helper]
+  changed_when: false
+  register: source_protected_packages
+
+- name: Require PVE 8 and protected packages remain installed
+  ansible.builtin.assert:
+    that:
+      - source_pveversion_after_upgrade.stdout is match('^pve-manager/8\\.')
+      - source_protected_packages.stdout_lines | select('match', '^proxmox-ve[ ]+8[.].*install ok installed$') | list | length > 0
+      - source_protected_packages.stdout_lines | select('match', '^pve-manager[ ]+8[.].*install ok installed$') | list | length > 0
+      - source_protected_packages.stdout_lines | select('match', '^proxmox-default-kernel[ ]+.*install ok installed$') | list | length > 0
+      - source_protected_packages.stdout_lines | select('match', '^proxmox-kernel-helper[ ]+.*install ok installed$') | list | length > 0
+    fail_msg: "Current PVE 8 update did not retain protected packages: {{ source_protected_packages.stdout }}"
+
+- name: Check reboot requirement after current PVE 8 update
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: source_reboot_required
+
+- name: Rerun official checker after current PVE 8 update
+  ansible.builtin.command:
+    argv: ['{{ transition.checker }}', --full]
+  changed_when: false
+  register: post_update_checker
+
+- name: Require no pending source reboot and clean checker
+  ansible.builtin.assert:
+    that:
+      - not source_reboot_required.stat.exists
+      - post_update_checker.rc == 0
+    fail_msg: >-
+      Current PVE 8 update still needs a reboot or has checker failures. Reboot through the normal
+      maintenance task, rerun preflight, and resolve all checker findings before source migration.
+
+- name: Find existing allowlisted apt source files
+  ansible.builtin.stat:
+    path: '{{ item }}'
+  loop: '{{ transition.allowed_source_files }}'
+  register: allowed_source_stats
+
+- name: Create source backup directory
+  ansible.builtin.file:
+    path: "/root/proxmox-major-upgrade-{{ ansible_date_time.iso8601_basic_short }}"
+    state: directory
+    mode: '0700'
+
+- name: Preserve dated source backups on the target host
+  ansible.builtin.copy:
+    src: '{{ item.item }}'
+    dest: "/root/proxmox-major-upgrade-{{ ansible_date_time.iso8601_basic_short }}/{{ item.item | basename }}"
+    remote_src: true
+    mode: preserve
+  loop: '{{ allowed_source_stats.results }}'
+  when: item.stat.exists
+
+- name: Render canonical Debian target sources
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list
+    content: "{{ transition.target_debian_sources }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Disable deb822 Debian sources definition when it exists
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/debian.sources
+    content: "# Disabled by proxmox-major-upgrade.yaml; /etc/apt/sources.list is canonical.\n"
+    owner: root
+    group: root
+    mode: '0644'
+  when: (allowed_source_stats.results | selectattr('item', 'equalto', '/etc/apt/sources.list.d/debian.sources') | map(attribute='stat.exists') | first | default(false))
+
+- name: Disable enterprise PVE channel explicitly
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-enterprise.list
+    content: "{{ transition.disabled_pve_source_content }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Disable legacy PVE install repository explicitly
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-install-repo.list
+    content: "{{ transition.disabled_pve_source_content }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Configure standardized PVE no-subscription channel
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pve-no-subscription.list
+    content: "{{ transition.pve_no_subscription_source }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Require canonical source policy after source migration
+  ansible.builtin.include_tasks: tasks/proxmox-major-source-policy.yaml
+  vars:
+    cleanup_generated_pve_enterprise_source: true
+
+- name: Complete target upgrade after canonical source migration
+  ansible.builtin.include_tasks: tasks/proxmox-major-target-upgrade.yaml

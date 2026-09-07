@@ -1,0 +1,6 @@
+apiVersion: v2
+name: family-retirement-planner
+description: Self-hosted family retirement planning workbench
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,114 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "plane.fullname" . }}-seaweedfs-bucket
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "plane.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs-bucket
+spec:
+  backoffLimit: 6
+  activeDeadlineSeconds: 300
+  # Without this, a completed Job object sticks around forever; since Jobs
+  # are immutable once created, a later `helm upgrade` that needs to change
+  # this Job's spec would fail against the still-present old object instead
+  # of the TTL controller having already garbage-collected it. 86400s (24h)
+  # gives ample time to inspect a failed/completed run before GC.
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "plane.labels" . | nindent 8 }}
+        app.kubernetes.io/component: seaweedfs-bucket
+    spec:
+      restartPolicy: OnFailure
+      # This Job's containers never mount the SeaweedFS data PVC (pure S3/gRPC
+      # clients over the network), so - unlike the seaweedfs.yaml Deployment -
+      # there is no root-then-chown startup dance to preserve here. They can
+      # run fully as the image's built-in non-root "seaweed" user (uid 1000,
+      # verified via `id seaweed` in the image) with all capabilities dropped.
+      initContainers:
+        - name: wait-for-s3
+          image: "{{ .Values.image.seaweedfs.repository }}:{{ .Values.image.seaweedfs.tag }}@{{ .Values.image.seaweedfs.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1000
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              i=0
+              until nc -z -w2 {{ .Values.seaweedfs.host }} {{ .Values.seaweedfs.s3Port }}; do
+                i=$((i + 1))
+                if [ "$i" -ge 60 ]; then
+                  echo "timed out waiting for seaweedfs S3 endpoint {{ .Values.seaweedfs.host }}:{{ .Values.seaweedfs.s3Port }}" >&2
+                  exit 1
+                fi
+                sleep 2
+              done
+              echo "seaweedfs S3 endpoint {{ .Values.seaweedfs.host }}:{{ .Values.seaweedfs.s3Port }} is reachable"
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: create-bucket
+          image: "{{ .Values.image.seaweedfs.repository }}:{{ .Values.image.seaweedfs.tag }}@{{ .Values.image.seaweedfs.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1000
+          # `weed shell`'s s3.bucket.create issues a filer CreateEntry with
+          # o_excl=false (verified against weed/shell/command_s3_bucket_create.go
+          # and weed/filer/filer.go), so it creates-or-replaces the bucket
+          # directory and never errors just because the bucket already exists
+          # - that is what makes a bare re-run idempotent, with no special-case
+          # "already exists" swallowing needed here.
+          #
+          # `weed shell`'s own REPL only logs "error: ..." to stderr on a
+          # failed command and still exits 0 (verified against
+          # weed/shell/shell_liner.go's processEachCmd) - the SeaweedFS project's
+          # own test suite works around this the same way (grepping the
+          # combined output for a failure marker; see
+          # test/s3/lifecycle/s3_lifecycle_test.go's runShellCommand). This
+          # script mirrors that: capture the real process exit code AND scan
+          # the output for an "error:" line, failing the container on either,
+          # so no unrelated error is swallowed.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              rc=0
+              OUTPUT=$(printf 's3.bucket.create -name %s\nexit\n' "{{ .Values.seaweedfs.bucket }}" \
+                | weed shell -master={{ .Values.seaweedfs.host }}:{{ .Values.seaweedfs.masterPort }} -filer={{ .Values.seaweedfs.host }}:{{ .Values.seaweedfs.filerPort }} 2>&1) || rc=$?
+              echo "$OUTPUT"
+              if [ "$rc" -ne 0 ]; then
+                echo "weed shell exited with status $rc" >&2
+                exit 1
+              fi
+              if echo "$OUTPUT" | grep -qi '^error:'; then
+                echo "s3.bucket.create reported an error" >&2
+                exit 1
+              fi
+              echo "bucket {{ .Values.seaweedfs.bucket }} ensured"
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

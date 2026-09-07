@@ -1,0 +1,183 @@
+---
+- name: Update Proxmox VE packages serially
+  hosts: proxmox
+  serial: 1
+  gather_facts: true
+  vars:
+    reboot_if_required: false
+    protected_pve_packages: [proxmox-ve, pve-manager, proxmox-default-kernel, proxmox-kernel-helper]
+    allowed_source_files:
+      - /etc/apt/sources.list
+      - /etc/apt/sources.list.d/debian.sources
+      - /etc/apt/sources.list.d/pve-enterprise.list
+      - /etc/apt/sources.list.d/pve-install-repo.list
+      - /etc/apt/sources.list.d/pve-no-subscription.list
+  tasks:
+    - name: Read installed Proxmox version before package maintenance
+      ansible.builtin.command:
+        argv: [pveversion]
+      changed_when: false
+      register: current_pveversion
+
+    - name: Derive expected current Debian and PVE suite
+      ansible.builtin.set_fact:
+        current_pve_major: "{{ current_pveversion.stdout | regex_search('^pve-manager/([0-9]+)', '\\1') | first }}"
+        expected_debian_codename: "{{ 'bookworm' if current_pveversion.stdout is match('^pve-manager/8\\.') else 'trixie' if current_pveversion.stdout is match('^pve-manager/9\\.') else '' }}"
+        expected_debian_suites: "{{ ['bookworm', 'bookworm-updates', 'bookworm-security'] if current_pveversion.stdout is match('^pve-manager/8\\.') else ['trixie', 'trixie-updates', 'trixie-security'] if current_pveversion.stdout is match('^pve-manager/9\\.') else [] }}"
+
+    - name: Find configured apt source files
+      ansible.builtin.find:
+        paths: [/etc/apt]
+        patterns: ['*.list', '*.sources']
+        recurse: true
+        file_type: file
+      register: maintenance_source_files
+
+    - name: Read configured apt source files
+      ansible.builtin.slurp:
+        src: '{{ item.path }}'
+      loop: '{{ maintenance_source_files.files }}'
+      register: maintenance_source_contents
+
+    - name: Collect active configured PVE source lines
+      ansible.builtin.set_fact:
+        maintenance_pve_sources: "{{ (maintenance_pve_sources | default([])) + ((item.content | b64decode) | regex_findall('(?m)^\\s*deb\\s+.*proxmox\\.com/debian/pve.*$')) }}"
+      loop: '{{ maintenance_source_contents.results }}'
+
+    - name: Identify unsupported active source files
+      ansible.builtin.set_fact:
+        maintenance_unsupported_source_files: "{{ (maintenance_unsupported_source_files | default([])) + [item.item.path] }}"
+      loop: '{{ maintenance_source_contents.results }}'
+      when:
+        - item.item.path not in allowed_source_files
+        - (item.content | b64decode) is search('(?m)^\\s*(deb |URIs:)')
+
+    - name: Collect active configured Debian source lines
+      ansible.builtin.set_fact:
+        maintenance_debian_sources: "{{ (maintenance_debian_sources | default([])) + ((item.content | b64decode) | regex_findall('(?m)^\\s*deb(?:-src)?\\s+.*$')) }}"
+      loop: '{{ maintenance_source_contents.results }}'
+
+    - name: Identify invalid active Debian source lines
+      ansible.builtin.set_fact:
+        maintenance_invalid_debian_sources: "{{ (maintenance_invalid_debian_sources | default([])) + [item] }}"
+      loop: '{{ maintenance_debian_sources | default([]) }}'
+      when:
+        - item is not search('proxmox\\.com/debian/pve')
+        - item is not search('https?://(?:(?:deb|security)\\.debian\\.org|ftp\\.[^/]+\\.debian\\.org)/')
+          or item is not search('\\s(?:' ~ expected_debian_suites | join('|') ~ ')\\s')
+
+    - name: Collect recognized active Debian list sources
+      ansible.builtin.set_fact:
+        maintenance_recognized_debian_sources: "{{ (maintenance_recognized_debian_sources | default([])) + [item] }}"
+      loop: '{{ maintenance_debian_sources | default([]) }}'
+      when:
+        - item is not search('proxmox\\.com/debian/pve')
+        - item is search('https?://(?:(?:deb|security)\\.debian\\.org|ftp\\.[^/]+\\.debian\\.org)/')
+        - item is search('\\s(?:' ~ expected_debian_suites | join('|') ~ ')\\s')
+
+    - name: Identify invalid active deb822 source definitions
+      ansible.builtin.set_fact:
+        maintenance_invalid_deb822_sources: "{{ (maintenance_invalid_deb822_sources | default([])) + [item.item.path] }}"
+      loop: '{{ maintenance_source_contents.results }}'
+      when:
+        - (item.content | b64decode) is search('(?m)^\\s*URIs:')
+        - >-
+          (item.content | b64decode) is not search(
+          '(?m)^\\s*URIs:\\s+https?://(?:(?:deb|security)\\.debian\\.org|ftp\\.[^/]+\\.debian\\.org)/')
+          or (item.content | b64decode) is not search(
+          '(?m)^\\s*Suites:\\s*(?:' ~ expected_debian_suites | join('|') ~ ')\\s*$')
+
+    - name: Collect recognized active Debian deb822 source definitions
+      ansible.builtin.set_fact:
+        maintenance_recognized_deb822_sources: "{{ (maintenance_recognized_deb822_sources | default([])) + [item.item.path] }}"
+      loop: '{{ maintenance_source_contents.results }}'
+      when:
+        - (item.content | b64decode) is search('(?m)^\\s*URIs:\\s+https?://(?:(?:deb|security)\\.debian\\.org|ftp\\.[^/]+\\.debian\\.org)/')
+        - (item.content | b64decode) is search('(?m)^\\s*Suites:\\s*(?:' ~ expected_debian_suites | join('|') ~ ')\\s*$')
+
+    - name: Require installed PVE major, Debian release, and PVE suite alignment
+      ansible.builtin.assert:
+        that:
+          - current_pve_major in ['8', '9']
+          - ansible_distribution_release == expected_debian_codename
+          - maintenance_pve_sources | default([]) | length == 1
+          - maintenance_pve_sources | first is match('^\\s*deb\\s+http://download\\.proxmox\\.com/debian/pve\\s+' ~ expected_debian_codename ~ '\\s+pve-no-subscription\\s*$')
+          - maintenance_unsupported_source_files | default([]) | length == 0
+          - maintenance_invalid_debian_sources | default([]) | length == 0
+          - maintenance_invalid_deb822_sources | default([]) | length == 0
+          - (maintenance_recognized_debian_sources | default([]) | length) + (maintenance_recognized_deb822_sources | default([]) | length) > 0
+        fail_msg: >-
+          Refusing package maintenance because active Debian/PVE source paths, channels, or suites do not
+          align with the installed release. Commented Ceph/enterprise files are allowed; active third-party
+          or contradictory sources require manual reconciliation before a dist-upgrade.
+
+    - name: Update apt cache for the current Proxmox release
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Read current Proxmox apt candidates
+      ansible.builtin.command:
+        argv: [apt-cache, policy, pve-manager, proxmox-ve]
+      changed_when: false
+      register: current_pve_candidates
+
+    - name: Require candidates remain on installed PVE major
+      ansible.builtin.assert:
+        that: current_pve_candidates.stdout | regex_findall('(?m)^\\s*Candidate:\\s*' ~ current_pve_major ~ '\\.') | length == 2
+        fail_msg: "Refusing unintended PVE major change from candidates: {{ current_pve_candidates.stdout }}"
+
+    - name: Simulate current-release dist-upgrade
+      ansible.builtin.command:
+        argv: [apt-get, -s, dist-upgrade]
+      changed_when: false
+      register: maintenance_simulation
+
+    - name: Reject protected Proxmox package removals
+      ansible.builtin.assert:
+        that: maintenance_simulation.stdout is not search('(?m)^Remv\\s+(?:proxmox-ve|pve-manager|proxmox-default-kernel|proxmox-kernel-helper)\\b')
+        fail_msg: "Maintenance simulation removes a protected Proxmox package: {{ maintenance_simulation.stdout }}"
+
+    - name: Dist-upgrade installed packages after safety checks
+      ansible.builtin.apt:
+        upgrade: dist
+
+    - name: Show installed Proxmox version
+      ansible.builtin.command:
+        argv: [dpkg-query, -W, '-f=${binary:Package} ${Version} ${Status}\n', proxmox-ve, pve-manager, proxmox-default-kernel, proxmox-kernel-helper]
+      changed_when: false
+      register: protected_pve_status
+
+    - name: Require protected Proxmox packages remain installed
+      ansible.builtin.assert:
+        that:
+          - protected_pve_status.stdout_lines | select('match', '^proxmox-ve[ ]+' ~ current_pve_major ~ '[.].*install ok installed$') | list | length > 0
+          - protected_pve_status.stdout_lines | select('match', '^pve-manager[ ]+' ~ current_pve_major ~ '[.].*install ok installed$') | list | length > 0
+          - protected_pve_status.stdout_lines | select('match', '^proxmox-default-kernel[ ]+.*install ok installed$') | list | length > 0
+          - protected_pve_status.stdout_lines | select('match', '^proxmox-kernel-helper[ ]+.*install ok installed$') | list | length > 0
+        fail_msg: "Protected Proxmox packages are not installed after maintenance: {{ protected_pve_status.stdout }}"
+
+    - name: Report installed Proxmox version
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ protected_pve_status.stdout_lines }}"
+
+    - name: Check whether reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Report reboot requirement
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} requires reboot: {{ reboot_required_file.stat.exists }}"
+
+    - name: Reboot only when explicitly requested and required
+      ansible.builtin.reboot:
+        msg: Reboot initiated by Ansible after Proxmox package maintenance
+        connect_timeout: 5
+        reboot_timeout: 600
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+        test_command: pveversion
+      when:
+        - reboot_if_required | bool
+        - reboot_required_file.stat.exists

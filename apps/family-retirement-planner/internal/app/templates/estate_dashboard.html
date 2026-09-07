@@ -1,0 +1,57 @@
+{{define "estate_dashboard.html"}}
+{{template "header" .}}
+{{template "estate-nav" .}}
+
+<h1>Estate planning workspace</h1>
+{{template "estate-disclaimer" .}}
+
+<p class="help-text text-lg mb-xl">
+  Inventory transfer instructions and run a transparent death-event estimate. 
+  Recorded titles, documents, and beneficiary forms remain authoritative&mdash;not this application.
+</p>
+
+<div class="dashboard-grid">
+  <div class="stat-box">
+    <h3>Beneficiaries</h3>
+    <div class="stat-value">{{len .Data.Beneficiaries}}</div>
+    <a href="{{.EstateBase}}/beneficiaries">Review beneficiaries &rarr;</a>
+  </div>
+  <div class="stat-box">
+    <h3>Assets &amp; trusts</h3>
+    <div class="stat-value">{{len .Data.Assets}}</div>
+    <a href="{{.EstateBase}}/assets">Review ownership and transfers &rarr;</a>
+  </div>
+  <div class="stat-box">
+    <h3>Documents</h3>
+    <div class="stat-value">{{len .Data.Documents}}</div>
+    <a href="{{.EstateBase}}/documents">Review inventory &rarr;</a>
+  </div>
+  <div class="stat-box">
+    <h3>Persisted scenario results</h3>
+    <div class="stat-value">{{len .Data.Results}}</div>
+    <a href="{{.EstateBase}}/scenarios">Run or inspect scenarios &rarr;</a>
+  </div>
+</div>
+
+<h2>Readiness checklist</h2>
+<p class="help-text">Household-level inventory only. Document checks do not establish per-adult coverage or legal validity.</p>
+<div class="table-responsive"><table><thead><tr><th>Item</th><th>Status</th><th>Action or reason</th></tr></thead><tbody>
+{{range .Data.Readiness}}<tr><td>{{.Label}}</td><td>{{.Status}}</td><td>{{.Reason}}</td></tr>{{end}}
+</tbody></table></div>
+
+<div class="card mt-xxl">
+  <h2>What this model does</h2>
+  <ol class="event-list m-0">
+    <li><strong class="text-primary">Insurance:</strong> Payouts to designated beneficiaries or estate</li>
+    <li><strong class="text-primary">WROS:</strong> Joint ownership with survivorship transfers</li>
+    <li><strong class="text-primary">Designations:</strong> Recorded beneficiary designations for assets</li>
+    <li><strong class="text-primary">Trusts:</strong> Recorded trust transfers</li>
+    <li><strong class="text-primary">Probate:</strong> Probate inventory estimate of remaining assets</li>
+    <li><strong class="text-primary">Obligations:</strong> Modeled payment of entered costs and debts</li>
+    <li><strong class="text-primary">Residuary:</strong> Allocation of the net estate to residuary beneficiaries</li>
+    <li><strong class="text-primary">Warnings:</strong> Liquidity and solvency warnings</li>
+  </ol>
+</div>
+
+{{template "footer" .}}
+{{end}}
