@@ -1,0 +1,10 @@
+# DORMANT work overlay. Disabled; renders zero resources until it is enabled.
+# There is intentionally no deploy/upgrade/rollback task for this profile yet.
+enabled: false
+profile: work
+release: paperclip-work
+namespace: paperclip-work
+fullnameOverride: paperclip-work
+hostname: paperclip-work.theramirez.casa
+env:
+  PAPERCLIP_PUBLIC_URL: https://paperclip-work.theramirez.casa

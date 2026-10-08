@@ -1,0 +1,12 @@
+# POST-CLAIM overlay — applied ON TOP of values-personal.yaml.
+#
+# Enables the LAN/VPN-only HTTPRoute, points PAPERCLIP_PUBLIC_URL at the real
+# https hostname, and disables signup. Apply only after the admin has been
+# claimed via the bootstrap flow (port-forward + pinned npm CLI invite).
+httpRoute:
+  enabled: true
+env:
+  PAPERCLIP_PUBLIC_URL: https://paperclip.theramirez.casa
+  PAPERCLIP_AUTH_DISABLE_SIGN_UP: "true"
+probe:
+  hostHeader: paperclip.theramirez.casa

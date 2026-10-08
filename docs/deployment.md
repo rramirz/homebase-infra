@@ -25,6 +25,53 @@ Deployments are mostly Ansible playbooks and Helm releases applied to Rafael's h
 - Ask before destructive changes, reboots, PVC deletion, storage edits, or Gateway/DNS/firewall changes.
 - Family Retirement Planner static checks: `task family-retirement-planner:verify`; PostgreSQL isolation tests: `task family-retirement-planner:integration` (requires Docker). Adjacent chart lives at `apps/family-retirement-planner/chart`. It has not been deployed. LAN/VPN-only and no real data before backup/restore gate.
 - Estate inventory shares the same app/database/chart and therefore the same deployment boundary. Never expose it through Cloudflare Tunnel and never store document contents or credentials. Real estate/financial inventory remains prohibited until encrypted off-cluster backup and restore are implemented and tested.
+- Paperclip pilot (**deployed** revision 2 post-claim, personal only): chart `charts/paperclip`, one chart with three profiles selected by overlay — `values-personal.yaml` (release/namespace `paperclip-personal`, hostname `paperclip.theramirez.casa`, enabled) plus a post-claim `values-personal-claimed.yaml` overlay, and dormant `values-work.yaml`/`values-logicbroker.yaml` (disabled). Two-phase bootstrap: `task paperclip:bootstrap-deploy` (route-disabled, signup-open) → `task paperclip:bootstrap-port-forward` (one shell) + `task paperclip:bootstrap-invite` (another shell; runs pinned `npx --yes paperclipai@2026.916.1 auth bootstrap-ceo --config <ephemeral /tmp config> --base-url http://localhost:3100` in the app pod (inheriting the pod `DATABASE_URL` env) via an ephemeral `/tmp` config (removed by `trap`, no persistent config mutation), downloading the CLI at runtime and mutating Postgres) → open the generated localhost invite and claim admin → `PAPERCLIP_BOOTSTRAP_CONFIRMED=true task paperclip:upgrade` (post-claim: enables route + disables signup). Local-only checks `task paperclip:test`, `task paperclip:lint` (both phases), `task paperclip:render` (writes `/tmp/paperclip-personal-render.yaml` mode 0600 via `umask 077`, does not print Secret data), `task paperclip:render-dormant`; cluster-facing `task paperclip:dry-run` (`--hide-secret`) → `task paperclip:verify`; rollback `PAPERCLIP_REVISION=N task paperclip:rollback` (warns DB migrations are not reverted). Cluster tasks require context `home-base` + gitignored mode-0600 `charts/paperclip/values-personal.secret-values.yaml` (no `testMode` key). Only the personal profile has mutation tasks. LAN/VPN-only via kgateway `home` `https`; never add to Cloudflare Tunnel. No real employer/Logicbroker/sensitive personal data; no backup/restore yet (local `ssd` reclaim `Delete` — namespace/PVC deletion irreversible); the built-in DB backup currently warns with no recent backup, so the no-real-data rule stays until off-cluster backup + restore exist. Live: release `paperclip-personal` revision 2 (post-claim), both pods Ready/zero restarts, PVCs Bound, HTTPRoute Accepted/Resolved, external-dns A=192.168.1.83, `/api/health` ok; the first install rolled back on a probe `Host` 403 and was fixed with phase-specific probe `Host` headers (`probe.hostHeader`). The pinned authenticated mode prints no startup claim URL; the admin is claimed via the bootstrap invite flow. Namespace separation is not hard isolation (no NetworkPolicy); the Postgres password is immutable after first DB init.
+
+### Kubernetes node time synchronization
+
+Kubernetes nodes must run an enabled, active `chrony` service. The repository
+does not manage an external NTP pool; preserve the distribution defaults unless
+there is an explicit platform decision to change them. The playbook is
+`configure-kubernetes-time-sync.yaml`, targets `home_base`, and uses
+`serial: 1` so only one node changes at a time.
+
+Baseline and rollout:
+
+1. Run `task check:kubernetes-time-sync` to confirm the intended inventory
+   scope without connecting to hosts.
+2. Run `task configure:kubernetes-time-sync-dry-run` and inspect the package
+   and service changes. Check mode intentionally skips service start and runtime
+   chrony validation because chrony may not exist yet.
+3. Abort if inventory is broader than `home_base`, a node is already unhealthy,
+   or the dry-run proposes unrelated package/configuration changes.
+4. Run the prompt-gated `task configure:kubernetes-time-sync`. It installs
+   `chrony` with a one-hour apt-cache validity window, enables/starts the
+   service, and validates `systemctl is-active`, `systemctl is-enabled`, and
+   `chronyc tracking` after each node.
+5. Run `task verify:kubernetes-time-sync` and then the normal Kubernetes health
+   checks. No reboot is expected.
+
+If a node has a bad system clock, first prove the RTC is correct and record the
+comparison. Only then may an operator use `hwclock --hctosys --utc` as a
+one-off repair before rerunning chrony validation. Do not set clocks, reboot,
+drain nodes, or use RTC correction as a substitute for proving the time source.
+Abort on failed service enablement, failed tracking output, unexpected package
+changes, or any Kubernetes readiness regression; leave the next node untouched
+until the failed node is diagnosed.
+
+Verified live outcome on 2026-09-10: after proving the RTC correct, the
+operator ran `hwclock --hctosys --utc` interactively on home-base5
+(`k8s-node-4`, `192.168.1.139`, VM 101 on pve-1). No kubelet restart was
+needed; the node became Ready naturally and its lease renewed to current time.
+Delayed local-PV workloads rescheduled/started after Flannel recreated
+`/run/flannel/subnet.env`; the cluster is now 5/5 Ready. The persistent
+`configure-kubernetes-time-sync.yaml` rollout completed on all five `home_base`
+nodes. Direct passwordless SSH verification found chrony enabled and active on
+all five nodes, valid NTP Reference IDs, `Leap status: Normal`, and system
+offsets under 5 ms at verification time. Remaining non-Running pods were
+pre-existing and unrelated: ai-memory `qualtrim-sync` missing-secret/
+`CreateContainerConfigError`, media-automation `decluttarr` `ContainerCreating`,
+and qualtrim-sync `bedrock-trader-paper` `Error`.
 
 ### Flannel CNI upgrade
 

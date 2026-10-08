@@ -1,0 +1,20 @@
+{{- if .Values.enabled }}
+{{- $fullname := include "paperclip.fullname" . -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fullname }}-paperclip
+  namespace: {{ .Values.namespace }}
+  annotations:
+    "helm.sh/resource-policy": keep
+  labels:
+    {{- include "paperclip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: paperclip
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.appStorageSize }}
+{{- end }}

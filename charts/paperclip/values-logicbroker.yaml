@@ -1,0 +1,12 @@
+# DORMANT Logicbroker overlay. Disabled; renders zero resources until enabled.
+# There is intentionally no deploy/upgrade/rollback task for this profile yet.
+# Never store real employer/Logicbroker data here even after it is enabled,
+# until encrypted off-cluster backup and restore are implemented and tested.
+enabled: false
+profile: logicbroker
+release: paperclip-logicbroker
+namespace: paperclip-logicbroker
+fullnameOverride: paperclip-logicbroker
+hostname: paperclip-logicbroker.theramirez.casa
+env:
+  PAPERCLIP_PUBLIC_URL: https://paperclip-logicbroker.theramirez.casa

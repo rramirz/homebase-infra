@@ -117,6 +117,8 @@ For kgateway/Gateway API topics, compare against NGINX Ingress pragmatically.
 
 As of 2026-06-06, `/Users/rafaelramirez/homespace/homebase-infra/charts` is the canonical Helm charts directory for third-party/umbrella homelab platform charts only. First-party app charts should stay beside the app source code they deploy. Do not centralize Rafael-made app charts here unless explicitly asked. Previous external charts location `/Users/rafaelramirez/homespace/charts` is stale unless explicitly recreated for another purpose.
 
+`charts/paperclip` (added 2026-09-24; personal deployed at revision 2 post-claim, work and Logicbroker dormant) is the reusable multi-profile pattern for one chart that deploys several isolated instances of the same app: a disabled `values.yaml` base plus per-profile overlay files (`values-personal.yaml` bootstrap + `values-personal-claimed.yaml` post-claim, enabled; `values-work.yaml`/`values-logicbroker.yaml` dormant) selecting release/namespace/hostname identity. Real secrets stay in a gitignored mode-0600 `*-.secret-values.yaml`; the committed `secret-values.example.yaml` carries `testMode: true` (static-validation-only) + placeholders for lint/tests, and live tasks reject any secret file that sets a `testMode` key. Auth is bootstrapped in two phases (route-disabled deploy → port-forward → pinned npm CLI invite → post-claim upgrade). Follow this shape when adding a new profile rather than duplicating the chart.
+
 ## Communication Style
 
 When drafting messages for Rafael:

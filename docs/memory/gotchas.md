@@ -1,5 +1,48 @@
 # Gotchas
 
+## Kubernetes node clock skew and missing chrony
+
+### Symptom
+
+A Kubernetes node is reachable/alive but reports an implausibly old system
+clock, while the RTC is current. Kubelet TLS/authentication and lease
+freshness may fail even though the VM and OS are running.
+
+### Cause
+
+No time-synchronization daemon is installed or enabled, or the node clock has
+drifted beyond the tolerance of Kubernetes certificates and API authentication.
+Do not infer recovery from VM reachability alone.
+
+### Fix
+
+Use `configure-kubernetes-time-sync.yaml` through the serial, prompt-gated
+Taskfile workflow. It installs/enables `chrony` and validates active, enabled,
+tracking, and normal leap status. Do not hard-code an NTP pool in this repo.
+If the RTC is first proven correct, `hwclock --hctosys --utc` is an allowed one-off repair; it is not a replacement for chrony.
+
+### Checks
+
+Run `task check:kubernetes-time-sync`, then
+`task configure:kubernetes-time-sync-dry-run` (check mode previews apt and
+skips service/runtime checks when chrony is absent); after an approved rollout
+run `task verify:kubernetes-time-sync` and Kubernetes health checks. Abort on
+failed chrony validation, unexpected package changes, or node readiness
+regression.
+
+### Incident reference
+
+On 2026-09-10, the operator proved home-base5's RTC correct and ran
+`hwclock --hctosys --utc` interactively. No kubelet restart was needed; the node
+became Ready naturally and its lease renewed. Delayed local-PV workloads started
+after Flannel recreated `/run/flannel/subnet.env`; all five nodes became Ready.
+The persistent rollout completed on all five nodes. Passwordless SSH verification
+showed chrony enabled/active, valid NTP Reference IDs, `Leap status: Normal`, and
+system offsets under 5 ms. Remaining non-Running pods were pre-existing and not
+caused by this incident: ai-memory `qualtrim-sync` missing secret/
+`CreateContainerConfigError`, media-automation `decluttarr` `ContainerCreating`,
+and qualtrim-sync `bedrock-trader-paper` `Error`.
+
 ## Ansible `-b`/`sysctl` blockers for quick host reads on home_base nodes
 
 ### Symptom

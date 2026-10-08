@@ -1,0 +1,102 @@
+# Paperclip reusable chart — committed, non-secret BASE values.
+#
+# This chart deploys ONE isolated Paperclip instance per Helm release. There
+# are three profiles, selected by which overlay values file is applied:
+#
+#   values-personal.yaml       paperclip-personal        (ACTIVE, enabled)
+#   values-work.yaml           paperclip-work            (dormant, disabled)
+#   values-logicbroker.yaml    paperclip-logicbroker     (dormant, disabled)
+#
+# The base `enabled` flag below is false: rendering this file alone (with no
+# overlay) produces ZERO resources. Real credentials are NEVER in this file or
+# any overlay — they live in a gitignored, mode-0600
+# `values-personal.secret-values.yaml` (copy from `secret-values.example.yaml`).
+#
+# DISPOSABLE / NO REAL DATA yet: storage is local OpenEBS `ssd` PVCs with
+# reclaim policy `Delete`. There is no off-cluster backup/restore path. Do not
+# store employer/Logicbroker/sensitive personal data until backup and restore
+# are implemented and tested.
+
+enabled: false        # base: no resources by default
+profile: ""           # must be personal|work|logicbroker when enabled
+release: ""           # must equal the Helm release name when enabled
+namespace: ""         # must equal the Helm --namespace when enabled
+hostname: ""          # must equal the HTTPRoute hostname when enabled
+
+nameOverride: ""
+fullnameOverride: ""  # set per overlay to the release name (e.g. paperclip-personal)
+
+# Image pins are copied verbatim from image-lock.yaml. Never float these tags.
+image:
+  pullPolicy: IfNotPresent
+  paperclip:
+    repository: ghcr.io/paperclipai/paperclip
+    tag: sha-d554c47
+    digest: sha256:f203471a38603026aa861efef343c56a2785202f5f83da440a48f85e5a949a49
+  postgres:
+    repository: docker.io/library/postgres
+    tag: 17-alpine
+    digest: sha256:aa90e97ee862e558111d34cfb8b2c4bec768c2b039fb791341686928560263b3
+
+storageClassName: ssd
+appStorageSize: 10Gi
+postgresStorageSize: 10Gi
+
+service:
+  port: 3100
+  containerPort: 3100
+
+# Two-phase auth bootstrap. httpRoute.enabled is false during bootstrap (the
+# app is reachable only via a port-forward to http://localhost:3100) and true
+# after the admin has been claimed. The post-claim overlay flips these.
+httpRoute:
+  enabled: false
+
+# Probe Host header override. Paperclip's authenticated/private mode validates
+# the request Host header against its configured public URL, and kubelet sends
+# the pod IP as the Host header by default, which returns HTTP 403 (the
+# startup/readiness/liveness probes would fail even though the app is healthy).
+# Each probe therefore sends an explicit Host header, phase-specific:
+#   bootstrap (route disabled) -> localhost:3100
+#   post-claim (route enabled) -> the hostname
+# Required when enabled; validated against the phase in paperclip.validate.
+probe:
+  hostHeader: ""
+
+# Non-secret application configuration.
+#   PAPERCLIP_PUBLIC_URL is phase-specific: http://localhost:3100 during
+#     bootstrap, https://<hostname> after the claim (set per overlay).
+#   PAPERCLIP_AUTH_DISABLE_SIGN_UP is "false" during bootstrap (signup open so
+#     the admin can claim) and "true" after the claim (signup closed).
+#   PAPERCLIP_AUTH_RATE_LIMIT_ENABLED and PAPERCLIP_AGENT_JWT_DISABLE_LEGACY_FALLBACK
+#     are always on for authenticated/private mode.
+env:
+  PORT: "3100"
+  SERVE_UI: "true"
+  PAPERCLIP_HOME: /paperclip
+  PAPERCLIP_DEPLOYMENT_MODE: authenticated
+  PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+  PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+  PAPERCLIP_AUTH_RATE_LIMIT_ENABLED: "true"
+  PAPERCLIP_AGENT_JWT_DISABLE_LEGACY_FALLBACK: "true"
+  PAPERCLIP_AUTH_DISABLE_SIGN_UP: "false"
+
+postgres:
+  database: paperclip
+  user: paperclip
+  port: 5432
+
+# Conservative resources. Upstream Paperclip's documented ceiling is ~2 CPU /
+# 4 GiB; requests stay well below that so the cluster is not over-committed,
+# and limits bound a runaway container without reserving the whole ceiling.
+resources:
+  app:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 2Gi }
+  postgres:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

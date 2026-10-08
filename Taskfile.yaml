@@ -11,6 +11,9 @@ vars:
   MEALIE_NS: mealie
   PLANE_CHARTS_DIR: charts/plane
   PLANE_NS: plane
+  PAPERCLIP_CHARTS_DIR: charts/paperclip
+  PAPERCLIP_NS: paperclip-personal
+  PAPERCLIP_RELEASE: paperclip-personal
   FLANNEL_CHARTS_DIR: charts/flannel
   FLANNEL_NS: kube-flannel
   RETIREMENT_APP_DIR: apps/family-retirement-planner
@@ -37,6 +40,27 @@ tasks:
     cmds:
       - kubectl get nodes -o wide
       - kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide
+
+  check:kubernetes-time-sync:
+    desc: List home_base hosts targeted by the chrony configuration without connecting or changing anything
+    cmds:
+      - '{{.ANSIBLE}} configure-kubernetes-time-sync.yaml --list-hosts'
+
+  configure:kubernetes-time-sync-dry-run:
+    desc: Preview chrony installation in Ansible check mode without mutating hosts
+    cmds:
+      - '{{.ANSIBLE}} configure-kubernetes-time-sync.yaml --check --diff'
+
+  configure:kubernetes-time-sync:
+    desc: Install and validate chrony serially on home_base; mutates hosts and needs sudo
+    prompt: This installs and starts chrony one Kubernetes node at a time. Continue?
+    cmds:
+      - '{{.ANSIBLE}} configure-kubernetes-time-sync.yaml'
+
+  verify:kubernetes-time-sync:
+    desc: Verify chrony service, enablement, and tracking state on home_base
+    cmds:
+      - 'ANSIBLE_BECOME_ASK_PASS=false {{.ANSIBLE}} configure-kubernetes-time-sync.yaml --tags verify -e ansible_become=false'
 
   check:proxmox-guests:
     aliases: [proxmox:guests]
@@ -478,6 +502,150 @@ tasks:
         msg: current kubectl context is not home-base - refusing to upgrade against the wrong cluster
     cmds:
       - helm upgrade --install plane . -n {{.PLANE_NS}} --create-namespace -f values.yaml -f secret-values.yaml --atomic --timeout 35m
+
+  paperclip:test:
+    desc: Run Paperclip static render contract tests (local-only, no cluster contact)
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    cmds:
+      - tests/contract.sh
+
+  paperclip:lint:
+    desc: Lint Paperclip chart for both bootstrap and post-claim stacks using the static example secrets (local-only)
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    cmds:
+      - helm lint . -n {{.PAPERCLIP_NS}} -f values.yaml -f values-personal.yaml -f secret-values.example.yaml
+      - helm lint . -n {{.PAPERCLIP_NS}} -f values.yaml -f values-personal.yaml -f values-personal-claimed.yaml -f secret-values.example.yaml
+
+  paperclip:render:
+    desc: Render the post-claim personal Paperclip chart locally to /tmp (mode 0600) without printing Secret data
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml not found - copy secret-values.example.yaml to values-personal.secret-values.yaml and fill in local values first
+      - sh: tests/validate-secret-file.sh values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml must be mode 0600 and must not set testMode (testMode is static-validation-only)
+    cmds:
+      - rm -f /tmp/paperclip-personal-render.yaml
+      - >-
+        sh -c 'umask 077 && helm template {{.PAPERCLIP_RELEASE}} . -n {{.PAPERCLIP_NS}} -f values.yaml -f values-personal.yaml -f values-personal-claimed.yaml -f values-personal.secret-values.yaml > /tmp/paperclip-personal-render.yaml'
+
+  paperclip:render-dormant:
+    desc: Render dormant work/logicbroker overlays to confirm they produce zero resources (local-only)
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    cmds:
+      - helm template paperclip-work . -n paperclip-work -f values.yaml -f values-work.yaml > /tmp/paperclip-work-render.yaml
+      - helm template paperclip-logicbroker . -n paperclip-logicbroker -f values.yaml -f values-logicbroker.yaml > /tmp/paperclip-logicbroker-render.yaml
+      - '! grep -qE "^kind:" /tmp/paperclip-work-render.yaml'
+      - '! grep -qE "^kind:" /tmp/paperclip-logicbroker-render.yaml'
+
+  paperclip:dry-run:
+    desc: Server-side dry-run of the personal Paperclip upgrade against the live cluster without mutating anything
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml not found - copy secret-values.example.yaml to values-personal.secret-values.yaml and fill in local values first
+      - sh: tests/validate-secret-file.sh values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml must be mode 0600 and must not set testMode (testMode is static-validation-only)
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to dry-run against the wrong cluster
+    cmds:
+      - helm upgrade --install {{.PAPERCLIP_RELEASE}} . -n {{.PAPERCLIP_NS}} --create-namespace -f values.yaml -f values-personal.yaml -f values-personal-claimed.yaml -f values-personal.secret-values.yaml --dry-run=server --hide-secret
+
+  paperclip:upgrade:
+    desc: Post-claim upgrade of the personal Paperclip pilot (enables HTTPRoute + disables signup)
+    prompt: This applies the post-claim overlay to release {{.PAPERCLIP_RELEASE}} (enables the HTTPRoute and disables signup). It must never hold real data. Continue?
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml not found - copy secret-values.example.yaml to values-personal.secret-values.yaml and fill in local values first
+      - sh: tests/validate-secret-file.sh values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml must be mode 0600 and must not set testMode (testMode is static-validation-only)
+      - sh: '[ "{{.PAPERCLIP_BOOTSTRAP_CONFIRMED}}" = "true" ]'
+        msg: PAPERCLIP_BOOTSTRAP_CONFIRMED=true is required (run bootstrap-deploy + claim admin first, then re-run with PAPERCLIP_BOOTSTRAP_CONFIRMED=true)
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to upgrade against the wrong cluster
+    cmds:
+      - helm upgrade --install {{.PAPERCLIP_RELEASE}} . -n {{.PAPERCLIP_NS}} --create-namespace -f values.yaml -f values-personal.yaml -f values-personal-claimed.yaml -f values-personal.secret-values.yaml --rollback-on-failure --timeout 15m
+
+  paperclip:bootstrap-deploy:
+    desc: Install/upgrade the personal Paperclip pilot in bootstrap mode (HTTPRoute disabled, signup open)
+    prompt: This installs/upgrades the personal Paperclip pilot in bootstrap mode (no HTTPRoute, signup open on localhost only). It must never hold real data. Continue?
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    preconditions:
+      - sh: test -f values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml not found - copy secret-values.example.yaml to values-personal.secret-values.yaml and fill in local values first
+      - sh: tests/validate-secret-file.sh values-personal.secret-values.yaml
+        msg: charts/paperclip/values-personal.secret-values.yaml must be mode 0600 and must not set testMode (testMode is static-validation-only)
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to deploy against the wrong cluster
+    cmds:
+      - helm upgrade --install {{.PAPERCLIP_RELEASE}} . -n {{.PAPERCLIP_NS}} --create-namespace -f values.yaml -f values-personal.yaml -f values-personal.secret-values.yaml --rollback-on-failure --timeout 15m
+
+  paperclip:bootstrap-invite:
+    desc: Create the Paperclip bootstrap CEO invite via the pinned npm CLI inside the app pod (ephemeral /tmp config; downloads paperclipai@2026.916.1 at runtime; mutates Postgres)
+    prompt: This downloads the pinned paperclipai@2026.916.1 npm CLI at runtime inside the app pod and runs `auth bootstrap-ceo` against an ephemeral /tmp config, mutating Postgres to create an invite. Run only after bootstrap-deploy with the port-forward active. Continue?
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to exec against the wrong cluster
+    cmds:
+      - |-
+        kubectl -n {{.PAPERCLIP_NS}} exec -i deploy/{{.PAPERCLIP_RELEASE}} -- sh -s <<'SCRIPT'
+        set -eu
+        cfg="/tmp/pcp-bootstrap-config-$$.json"
+        trap 'rm -f "$cfg"' EXIT
+        printf '%s\n' '{"$meta":{"version":1,"updatedAt":"2026-01-01T00:00:00.000Z","source":"configure"},"database":{"mode":"postgres"},"logging":{"mode":"file"},"server":{"deploymentMode":"authenticated"}}' > "$cfg"
+        out="$(npx --yes paperclipai@2026.916.1 auth bootstrap-ceo --config "$cfg" --base-url http://localhost:3100 2>&1)" || true
+        invite="$(printf '%s\n' "$out" | grep -oE 'http://localhost:3100/invite/pcp_bootstrap_[A-Za-z0-9_-]+' | head -n1 || true)"
+        if [ -z "$invite" ]; then
+          echo 'ERROR: bootstrap-ceo did not emit an invite URL (the CLI can exit 0 without writing an invite when config/DB resolution is off); re-check the ephemeral config' >&2
+          exit 1
+        fi
+        printf 'Invite URL: %s\n' "$invite"
+        echo 'Next: open the invite URL in a browser on this machine, sign up and claim the admin, then run PAPERCLIP_BOOTSTRAP_CONFIRMED=true task paperclip:upgrade'
+        SCRIPT
+
+  paperclip:bootstrap-port-forward:
+    desc: Forward local port 3100 to the Paperclip app Service (run in one shell; run bootstrap-invite in another)
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to forward against the wrong cluster
+    cmds:
+      - kubectl -n {{.PAPERCLIP_NS}} port-forward svc/{{.PAPERCLIP_RELEASE}} 3100:3100
+
+  paperclip:verify:
+    desc: Verify the live personal Paperclip release read-only (no mutation)
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to verify against the wrong cluster
+    cmds:
+      - kubectl -n {{.PAPERCLIP_NS}} rollout status deployment/{{.PAPERCLIP_RELEASE}} --timeout=5m
+      - kubectl -n {{.PAPERCLIP_NS}} rollout status statefulset/{{.PAPERCLIP_RELEASE}}-postgres --timeout=5m
+      - kubectl -n {{.PAPERCLIP_NS}} get pvc -o wide
+      - kubectl -n {{.PAPERCLIP_NS}} get httproute -o wide
+      - |-
+        route_status="$(kubectl -n {{.PAPERCLIP_NS}} get httproute {{.PAPERCLIP_RELEASE}} -o jsonpath='{range .status.parents[*].conditions[*]}{.type}={.status}{"\n"}{end}')"
+        printf '%s\n' "$route_status" | grep -qx 'Accepted=True' || { echo "ERROR: HTTPRoute Accepted is not True" >&2; exit 1; }
+        printf '%s\n' "$route_status" | grep -qx 'ResolvedRefs=True' || { echo "ERROR: HTTPRoute ResolvedRefs is not True" >&2; exit 1; }
+        echo "HTTPRoute Accepted=True, ResolvedRefs=True"
+      - |-
+        dns="$(dig +short paperclip.theramirez.casa A)"
+        printf '%s\n' "$dns" | grep -qx '192.168.1.83' || { echo "ERROR: paperclip.theramirez.casa A record is not 192.168.1.83 (got: $dns)" >&2; exit 1; }
+        echo "DNS paperclip.theramirez.casa A = 192.168.1.83"
+      - curl -fsS --resolve paperclip.theramirez.casa:443:192.168.1.83 https://paperclip.theramirez.casa/api/health
+      - helm status {{.PAPERCLIP_RELEASE}} -n {{.PAPERCLIP_NS}}
+
+  paperclip:rollback:
+    desc: Roll back the personal Paperclip release; requires PAPERCLIP_REVISION
+    prompt: This rolls back release {{.PAPERCLIP_RELEASE}}. Database migrations are NOT reverted by rollback. Continue?
+    dir: '{{.PAPERCLIP_CHARTS_DIR}}'
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to rollback against the wrong cluster
+      - sh: '[ -n "{{.PAPERCLIP_REVISION}}" ]'
+        msg: PAPERCLIP_REVISION is required (e.g. PAPERCLIP_REVISION=1 task paperclip:rollback)
+    cmds:
+      - helm rollback {{.PAPERCLIP_RELEASE}} {{.PAPERCLIP_REVISION}} -n {{.PAPERCLIP_NS}} --wait --timeout 15m
 
   family-retirement-planner:test:
     desc: Run Family Retirement Planner unit and static checks

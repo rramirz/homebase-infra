@@ -1,0 +1,21 @@
+{{- if .Values.enabled }}
+{{- $fullname := include "paperclip.fullname" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "paperclip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: paperclip
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "paperclip.labels" . | nindent 4 }}
+    app.kubernetes.io/component: paperclip
+{{- end }}

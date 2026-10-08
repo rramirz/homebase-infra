@@ -1,0 +1,24 @@
+# Pinned image references for charts/paperclip.
+#
+# `digest` values are the linux/amd64 platform digests rendered into templates
+# as `repository:tag@digest`. The cluster nodes are amd64, so the amd64 digest
+# is what the chart actually renders. Never move these to a floating tag or
+# `latest`: a mutable tag silently breaks reproducibility and defeats the
+# pinning contract tests.
+#
+# `sourceCommit` records the upstream Paperclip git commit the pinned `sha-...`
+# tag was built from. `indexDigest` (postgres only) is the multi-arch
+# manifest-list digest, recorded for provenance; the amd64 `digest` above is
+# authoritative for this cluster.
+
+paperclip:
+  repository: ghcr.io/paperclipai/paperclip
+  tag: sha-d554c47
+  digest: sha256:f203471a38603026aa861efef343c56a2785202f5f83da440a48f85e5a949a49
+  sourceCommit: d554c4789ed3930f8a53ac9fdf6503b3187097da
+
+postgres:
+  repository: docker.io/library/postgres
+  tag: 17-alpine
+  digest: sha256:aa90e97ee862e558111d34cfb8b2c4bec768c2b039fb791341686928560263b3
+  indexDigest: sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24

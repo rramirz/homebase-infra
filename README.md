@@ -22,6 +22,7 @@ Ansible playbooks for managing the homebase Kubernetes cluster, LXC containers, 
 | `update-syncthing-lxc.yaml` | `proxmox_managed_lxc` | Back up and update Syncthing inside the Proxmox-managed sync LXC via `pct exec`. |
 | `disable-swap.yaml` | `bootstrap` | Deploy the swapoff systemd service to persistently disable swap. Already included in `add-k8s-node.yaml`. |
 | `setup-iscsi.yaml` | `home_base` | Install and configure iSCSI initiators for shared storage. |
+| `configure-kubernetes-time-sync.yaml` | `home_base` | Install and validate chrony serially on Kubernetes nodes; no NTP pool is managed by this repo. |
 | `setup-gpu.yaml` | `gpu_nodes` | Install AMD GPU drivers and VAAPI video acceleration packages. |
 | `node-exporters.yaml` | `servers` | Install and configure Prometheus Node Exporter on all servers. |
 | `node-exporters-proxmox-lxc.yaml` | `proxmox_managed_lxc` | Install and configure Node Exporter inside LXCs managed via `pct exec` when direct SSH is not available. |
@@ -37,6 +38,7 @@ task --list
 
 # Read-only health checks
 task check:kubernetes-health
+task check:kubernetes-time-sync
 task check:proxmox-guests
 task check:nas-and-sync-storage
 
@@ -50,6 +52,9 @@ task update:active-kubernetes-node-os
 task update:ssh-managed-server-os-no-reboot
 task update:proxmox-packages-no-reboot
 task update:kubernetes-version
+task configure:kubernetes-time-sync-dry-run
+task configure:kubernetes-time-sync
+task verify:kubernetes-time-sync
 task update:plex-media-server
 task update:syncthing-lxc
 

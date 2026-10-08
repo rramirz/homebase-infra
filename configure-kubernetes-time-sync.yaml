@@ -1,0 +1,66 @@
+---
+- name: Configure chrony on Kubernetes nodes
+  hosts: home_base
+  serial: 1
+  tasks:
+    - name: Install chrony package
+      ansible.builtin.apt:
+        name: chrony
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable and start chrony service
+      ansible.builtin.systemd:
+        name: chrony
+        state: started
+        enabled: true
+      when: not ansible_check_mode
+
+    - name: Check chrony service is active
+      ansible.builtin.command:
+        argv: [systemctl, is-active, chrony]
+      changed_when: false
+      register: chrony_active
+      when: not ansible_check_mode
+      tags: [verify]
+
+    - name: Check chrony service is enabled
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, chrony]
+      changed_when: false
+      register: chrony_enabled
+      when: not ansible_check_mode
+      tags: [verify]
+
+    - name: Check chrony tracking state
+      ansible.builtin.command:
+        argv: [chronyc, tracking]
+      changed_when: false
+      register: chrony_tracking
+      until:
+        - chrony_tracking.rc == 0
+        - chrony_tracking.stdout is search('(?m)^Reference ID\s+:')
+        - chrony_tracking.stdout is search('(?m)^Leap status\s+:\s+Normal')
+      retries: 12
+      delay: 5
+      when: not ansible_check_mode
+      tags: [verify]
+
+    - name: Require chrony service to be active, enabled, and tracking
+      ansible.builtin.assert:
+        that:
+          - chrony_active.rc == 0
+          - chrony_active.stdout | trim == 'active'
+          - chrony_enabled.rc == 0
+          - chrony_enabled.stdout | trim == 'enabled'
+          - chrony_tracking.rc == 0
+          - chrony_tracking.stdout is search('(?m)^Reference ID\s+:')
+          - chrony_tracking.stdout is search('(?m)^Leap status\s+:\s+Normal')
+        fail_msg: >-
+          chrony validation failed on {{ inventory_hostname }}:
+          active={{ chrony_active.stdout | default('') | trim }},
+           enabled={{ chrony_enabled.stdout | default('') | trim }},
+           tracking={{ chrony_tracking.stdout | default('') | trim }}
+      when: not ansible_check_mode
+      tags: [verify]
