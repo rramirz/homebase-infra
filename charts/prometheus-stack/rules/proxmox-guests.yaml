@@ -1,0 +1,63 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: proxmox-guests
+  namespace: monitoring
+  labels:
+    release: prometheus-stack
+    app.kubernetes.io/part-of: prometheus-stack
+spec:
+  groups:
+    - name: proxmox-guests
+      rules:
+        - alert: ProxmoxGuestDown
+          expr: (pve_up{id=~"qemu/.*|lxc/.*"} == 0) and on (id, instance) (pve_onboot_status == 1)
+          for: 4m
+          labels:
+            severity: critical
+            component: proxmox
+            notify: ntfy
+          annotations:
+            summary: "Proxmox guest {{ $labels.id }} on {{ $labels.node }} is stopped but has onboot=1"
+            description: |
+              The pve-guest-keepalive timer should restart onboot=1 guests within ~2 minutes.
+              If this fires the keepalive failed or is disabled (/etc/pve-guest-keepalive.disable).
+              Check `qm status`/`pct status` and `journalctl -t pve-guest-keepalive` on {{ $labels.node }}.
+
+    - name: kubernetes-availability
+      rules:
+        - alert: KubernetesApiServerDown
+          expr: absent(up{job="apiserver"} == 1)
+          for: 3m
+          labels:
+            severity: critical
+            component: kubernetes
+            notify: ntfy
+          annotations:
+            summary: "Kubernetes API server is unreachable from Prometheus"
+            description: "No healthy apiserver target for 3 minutes. The only control-plane node is home-base1 (VM 100 on pve-2)."
+
+        - alert: KubernetesNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: kubernetes
+            notify: ntfy
+          annotations:
+            summary: "Kubernetes node {{ $labels.node }} is NotReady"
+            description: "Node has not reported Ready for 5 minutes. Check the VM console on its Proxmox host (emergency mode from a /ssd mount race has happened before)."
+
+        - alert: EtcdSnapshotStale
+          expr: |
+            (time() - max(kube_cronjob_status_last_successful_time{namespace="kube-system",cronjob="etcd-snapshot"}) > 108000)
+            or absent(kube_cronjob_status_last_successful_time{namespace="kube-system",cronjob="etcd-snapshot"})
+          for: 30m
+          labels:
+            severity: warning
+            component: kubernetes
+            notify: ntfy
+          annotations:
+            summary: "No successful etcd snapshot in the last 30 hours"
+            description: "CronJob kube-system/etcd-snapshot runs every 12h and writes to /var/backups/etcd on home-base1. Check `kubectl -n kube-system get jobs` and the job logs."

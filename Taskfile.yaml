@@ -208,6 +208,18 @@ tasks:
     cmds:
       - '{{.ANSIBLE}} update-plex.yaml'
 
+  install:pve-guest-keepalive:
+    aliases: [pve:keepalive]
+    desc: Install a timer on Proxmox hosts that restarts stopped onboot=1 guests (limit with PVE_HOST=pve-2)
+    cmds:
+      - '{{.ANSIBLE}} install-pve-guest-keepalive.yaml --limit {{.PVE_HOST | default "pve-2"}}'
+
+  install:homelab-watchdog:
+    aliases: [watchdog:install]
+    desc: Install out-of-cluster pve-2/K8s-API watchdog on pve-1 that pushes via public ntfy.sh
+    cmds:
+      - '{{.ANSIBLE}} install-homelab-watchdog.yaml --limit pve-1'
+
   update:syncthing-lxc:
     aliases: [syncthing:update]
     desc: Back up and update Syncthing in the Proxmox-managed sync LXC

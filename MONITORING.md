@@ -128,6 +128,7 @@ Storage coverage comes from three overlapping exporters, all running on
   NAS ZFS health/capacity, Syncthing LXC storage pressure, and filesystems
   below 20% free. Source:
   `charts/prometheus-stack/dashboards/homelab-essentials.yaml`.
+- **Homelab / Stability** (uid `homelab-stability`, default range 7d) — answers "is pve-2 still crashing?": pve-2 uptime/reboot count/kernel/temps/PSI, reachability timeline vs pve-1 as a control, per-VM running state and restarts, K8s node readiness, pod restarts, firing alerts, etcd snapshot age. A red annotation marks every pve-2 reboot. Reboots use `changes(node_boot_time_seconds)` for the host and `resets(pve_uptime_seconds)` for VMs (NOT `changes()` — uptime increases every scrape). Source: `charts/prometheus-stack/dashboards/homelab-stability.yaml`.
 - **Node Exporter Full** — generic per-host OS metrics; retained in repo but dashboard auto-import is disabled because it is noisy for normal home ops.
 - **Proxmox via Prometheus** — cluster/guest metrics from pve-exporter.
 
@@ -218,7 +219,7 @@ zfs_pool_free_bytes{pool="home-storage"} / 1024^4
    finalized daily history is reported one day later. cloudflared itself is not
    scraped here and would only provide shared tunnel-level metrics, not
    per-host traffic.
-- **Retention**: Prometheus keeps `3d` at
+- **Retention**: Prometheus keeps `30d` (raised from `3d` on 2026-10-09 so the Stability dashboard has history; ~0.9 GB/day on a 200Gi `ssd` PVC) at
    `prometheus.prometheusSpec.retention` in `values.yaml`. Alertmanager
    separately uses `120h` retention. Bump either if needed.
 - **Adding a ServiceMonitor/PodMonitor for your own app** (2026-07-02,

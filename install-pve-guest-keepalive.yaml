@@ -1,0 +1,83 @@
+---
+# Restart Proxmox guests with onboot=1 that were found stopped while the host stays up.
+# Why: `onboot` only fires at host boot. On 2026-10-09 a KVM Oops killed VM 100
+# (K8s control plane) and it stayed stopped ~4.5h until noticed by hand.
+#
+# Safety rails:
+#   - /etc/pve-guest-keepalive.disable present  -> do nothing (use during maintenance)
+#   - first 5 min after host boot               -> do nothing (onboot ordering owns that)
+#   - guest must be seen stopped on 2 consecutive runs (~1-2 min) before start
+#   - guests with a `lock:` in config, or onboot!=1, are never touched
+- name: Install Proxmox guest keepalive timer
+  hosts: proxmox
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Install keepalive script
+      copy:
+        dest: /usr/local/sbin/pve-guest-keepalive
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          # Managed by homebase-infra/install-pve-guest-keepalive.yaml
+          set -u
+          STATE=/run/pve-guest-keepalive
+          mkdir -p "$STATE"
+          [ -e /etc/pve-guest-keepalive.disable ] && exit 0
+          case "$(systemctl is-system-running 2>/dev/null)" in stopping|starting) exit 0 ;; esac
+          up=$(cut -d. -f1 /proc/uptime)
+          [ "$up" -lt 300 ] && exit 0
+
+          check() {  # $1=kind(qm|pct) $2=id $3=status
+            local kind=$1 id=$2 st=$3 f="$STATE/$1-$2"
+            if [ "$st" != "stopped" ]; then rm -f "$f"; return; fi
+            $kind config "$id" 2>/dev/null | grep -q '^onboot: 1' || { rm -f "$f"; return; }
+            $kind config "$id" 2>/dev/null | grep -q '^lock:' && return
+            if [ ! -e "$f" ]; then touch "$f"; return; fi   # first sighting: debounce
+            logger -t pve-guest-keepalive "$kind $id stopped with onboot=1; starting"
+            if $kind start "$id" >/dev/null 2>&1; then
+              logger -t pve-guest-keepalive "$kind $id started"; rm -f "$f"
+            else
+              logger -t pve-guest-keepalive "$kind $id start FAILED"
+            fi
+          }
+
+          qm list 2>/dev/null | awk 'NR>1 {print $1, $3}' | while read -r id st; do check qm "$id" "$st"; done
+          pct list 2>/dev/null | awk 'NR>1 {print $1, $2}' | while read -r id st; do check pct "$id" "$st"; done
+          exit 0
+
+    - name: Install keepalive service unit
+      copy:
+        dest: /etc/systemd/system/pve-guest-keepalive.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Start stopped onboot=1 Proxmox guests
+          After=pve-guests.service
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/pve-guest-keepalive
+
+    - name: Install keepalive timer unit
+      copy:
+        dest: /etc/systemd/system/pve-guest-keepalive.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Check for stopped onboot=1 Proxmox guests every minute
+
+          [Timer]
+          OnBootSec=5min
+          OnUnitActiveSec=1min
+          AccuracySec=10s
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable and start keepalive timer
+      systemd:
+        name: pve-guest-keepalive.timer
+        enabled: true
+        state: started
+        daemon_reload: true

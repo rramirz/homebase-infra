@@ -1,0 +1,103 @@
+---
+# Out-of-cluster watcher. Prometheus and the K8s API both live on pve-2, so when pve-2
+# dies every in-cluster alert dies with it. This runs on pve-1 (separate failure domain)
+# and pushes through public ntfy.sh so it does not depend on the cluster or the ntfy pod.
+# Topic is generated once into /etc/homelab-watchdog.env on the host; never commit it.
+- name: Install out-of-cluster homelab watchdog
+  hosts: proxmox
+  gather_facts: false
+  become: false
+  vars:
+    watchdog_checks:
+      - { name: pve-2-host, kind: ping, target: 192.168.1.28 }
+      - { name: k8s-api, kind: tcp, target: 192.168.1.135, port: 6443 }
+  tasks:
+    - name: Generate ntfy.sh topic once
+      shell: |
+        umask 077
+        echo "NTFY_URL=https://ntfy.sh/homebase-watchdog-$(openssl rand -hex 8)" > /etc/homelab-watchdog.env
+      args:
+        creates: /etc/homelab-watchdog.env
+
+    - name: Install watchdog script
+      copy:
+        dest: /usr/local/sbin/homelab-watchdog
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          # Managed by homebase-infra/install-homelab-watchdog.yaml
+          set -u
+          . /etc/homelab-watchdog.env
+          STATE=/run/homelab-watchdog
+          FAILS_BEFORE_ALERT=3
+          mkdir -p "$STATE"
+
+          notify() {  # $1=title $2=priority $3=tags $4=body
+            curl -s -m 15 -H "Title: $1" -H "Priority: $2" -H "Tags: $3" -d "$4" "$NTFY_URL" >/dev/null
+          }
+
+          run_check() {  # $1=name $2=kind $3=target $4=port
+            case "$2" in
+              ping) ping -c 2 -W 2 "$3" >/dev/null 2>&1 ;;
+              tcp)  timeout 4 bash -c "echo > /dev/tcp/$3/$4" >/dev/null 2>&1 ;;
+            esac
+          }
+
+          check() {
+            local name=$1 kind=$2 target=$3 port=${4:-} f="$STATE/$1"
+            local fails=0 alerted=0
+            [ -e "$f" ] && read -r fails alerted < "$f"
+            if run_check "$name" "$kind" "$target" "$port"; then
+              if [ "$alerted" = 1 ]; then
+                notify "RECOVERED: $name" default white_check_mark "$name reachable again ($kind $target${port:+:$port})"
+              fi
+              rm -f "$f"; return
+            fi
+            fails=$((fails + 1))
+            if [ "$fails" -ge "$FAILS_BEFORE_ALERT" ] && [ "$alerted" = 0 ]; then
+              notify "DOWN: $name" urgent rotating_light "$name unreachable from pve-1 for ${fails} checks ($kind $target${port:+:$port})"
+              alerted=1
+            fi
+            echo "$fails $alerted" > "$f"
+          }
+
+          {% for c in watchdog_checks %}
+          check {{ c.name }} {{ c.kind }} {{ c.target }}{% if c.port is defined %} {{ c.port }}{% endif %}
+
+          {% endfor %}
+          exit 0
+
+    - name: Install watchdog service unit
+      copy:
+        dest: /etc/systemd/system/homelab-watchdog.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Out-of-cluster homelab reachability watchdog
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/homelab-watchdog
+
+    - name: Install watchdog timer unit
+      copy:
+        dest: /etc/systemd/system/homelab-watchdog.timer
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Run homelab watchdog every minute
+
+          [Timer]
+          OnBootSec=3min
+          OnUnitActiveSec=1min
+          AccuracySec=10s
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable and start watchdog timer
+      systemd:
+        name: homelab-watchdog.timer
+        enabled: true
+        state: started
+        daemon_reload: true

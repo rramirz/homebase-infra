@@ -41,10 +41,12 @@ Improve OpenCode context efficiency and model routing.
 - Plane CE pilot: observe memory and restart behavior for 24 hours and 7 days; fix the SeaweedFS bucket Job before the next Helm upgrade; then test a real presigned upload and build/test backup restore.
 - Paperclip personal pilot is live at revision 2 post-claim. Keep the no-real-data rule; implement and test encrypted off-cluster backup and restore, verify signup disable server-side if stronger assurance is desired, evaluate the personal pilot, then optionally enable dormant `values-work.yaml`/`values-logicbroker.yaml` only after isolation and data rules are satisfied. Namespaces are not hard network isolation; no NetworkPolicy.
 
+- pve-2 reliability (2026-10-09): VM 100 restored; upgraded to kernel 7.0.14-23 + QEMU 11.0.3-4; exporter venv rebuilt; hardening shipped (panic_on_oops=1, guest keepalive timer, Alertmanager->ntfy receiver + new rules, pve-1 out-of-cluster watchdog, etcd snapshot CronJob). See AGENTS.md 2026-10-09 bullet for details and the pstore correction (crash dumps live in `/var/lib/systemd/pstore`). Pending approval: off-host etcd copy, control-plane move to pve-1, smart plug, kernel pin experiment. Cleanup candidates: chronic false criticals (kube-scheduler/controller-manager/proxy/etcd scrape), pve-1 exporter (`NasPveExporterDown`) likely same broken venv. Unhealthy pods since ~10-07: `agents/notifier-agent` CrashLoopBackOff, `ai-memory/qualtrim-sync` + `dipradar/dipradar` ImagePullBackOff, `media-automation/decluttarr` ContainerCreating.
+
 ## Open Questions
 
 - Whether to later compact the existing large `AGENTS.md` into topic docs.
 
 ## Last Updated
 
-2026-09-25
+2026-10-09
