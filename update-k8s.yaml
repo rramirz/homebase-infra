@@ -15,6 +15,26 @@
   hosts: home_base
   gather_facts: false
   tasks:
+    - name: Prompt for Kubernetes minor repo
+      run_once: true
+      pause:
+        prompt: "Kubernetes minor repo to use (e.g., v1.35) [{{ k8s_major_minor }}]"
+        echo: true
+      register: minor_input
+      when: k8s_minor_override is not defined
+
+    - name: Set Kubernetes minor repo for all hosts
+      run_once: true
+      set_fact:
+        k8s_major_minor: >-
+          {{ k8s_minor_override | default(minor_input.user_input | trim | default(k8s_major_minor, true), true) }}
+
+    - name: Validate Kubernetes minor format
+      run_once: true
+      assert:
+        that: k8s_major_minor is match('^v1\.[0-9]+$')
+        fail_msg: "k8s_major_minor must look like v1.35"
+
     - name: Setup Kubernetes apt repository
       include_tasks: tasks/k8s-apt-repo.yaml
 
@@ -36,12 +56,13 @@
     - name: Prompt for Kubernetes version
       run_once: true
       pause:
-        prompt: "Enter the version to install (e.g., 1.34.0-1.1)"
+        prompt: "Enter the version to install (e.g., {{ k8s_major_minor[1:] }}.0-1.1)"
       register: user_input
+      when: k8s_version_override is not defined
 
     - name: Set selected version for all hosts
       set_fact:
-        selected_version: "{{ user_input.user_input }}"
+        selected_version: "{{ k8s_version_override | default(user_input.user_input) }}"
       run_once: true
 
     - name: Unhold Kubernetes packages

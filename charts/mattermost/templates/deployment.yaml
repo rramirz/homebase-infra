@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mattermost.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "mattermost.name" . }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "mattermost.name" . }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "mattermost.name" . }}
+        app.kubernetes.io/component: app
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: init-storage-and-db
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              mkdir -p /mnt/data/config /mnt/data/data /mnt/data/logs /mnt/data/plugins /mnt/data/client-plugins /mnt/data/bleve-indexes
+              chown -R 2000:2000 /mnt/data
+              until pg_isready -h {{ include "mattermost.fullname" . }}-postgres -p {{ .Values.postgres.port }} -U {{ .Values.postgres.user | quote }} -d {{ .Values.postgres.database | quote }}; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+          volumeMounts:
+            - name: data
+              mountPath: /mnt/data
+      containers:
+        - name: mattermost
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.containerPort }}
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret }}
+                  key: {{ .Values.postgres.secretKey }}
+            - name: MM_SQLSETTINGS_DATASOURCE
+              value: "postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ include "mattermost.fullname" . }}-postgres:{{ .Values.postgres.port }}/$(POSTGRES_DB)?sslmode=disable&connect_timeout=10"
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /mattermost/config
+              subPath: config
+            - name: data
+              mountPath: /mattermost/data
+              subPath: data
+            - name: data
+              mountPath: /mattermost/logs
+              subPath: logs
+            - name: data
+              mountPath: /mattermost/plugins
+              subPath: plugins
+            - name: data
+              mountPath: /mattermost/client/plugins
+              subPath: client-plugins
+            - name: data
+              mountPath: /mattermost/bleve-indexes
+              subPath: bleve-indexes
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/v4/system/ping
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v4/system/ping
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "mattermost.fullname" . }}-data
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

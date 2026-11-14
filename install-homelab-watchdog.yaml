@@ -11,6 +11,8 @@
     watchdog_checks:
       - { name: pve-2-host, kind: ping, target: 192.168.1.28 }
       - { name: k8s-api, kind: tcp, target: 192.168.1.135, port: 6443 }
+      # target = LXC vmid on this host; checks gluetun healthy + qbittorrent running (VPN download path)
+      - { name: downloads-vpn, kind: dockerlxc, target: 104 }
   tasks:
     - name: Generate ntfy.sh topic once
       shell: |
@@ -40,6 +42,9 @@
             case "$2" in
               ping) ping -c 2 -W 2 "$3" >/dev/null 2>&1 ;;
               tcp)  timeout 4 bash -c "echo > /dev/tcp/$3/$4" >/dev/null 2>&1 ;;
+              dockerlxc)
+                [ -n "$(timeout 20 pct exec "$3" -- docker ps -q --filter name=gluetun --filter health=healthy 2>/dev/null)" ] &&
+                [ -n "$(timeout 20 pct exec "$3" -- docker ps -q --filter name=qbittorrent --filter status=running 2>/dev/null)" ] ;;
             esac
           }
 
@@ -49,13 +54,13 @@
             [ -e "$f" ] && read -r fails alerted < "$f"
             if run_check "$name" "$kind" "$target" "$port"; then
               if [ "$alerted" = 1 ]; then
-                notify "RECOVERED: $name" default white_check_mark "$name reachable again ($kind $target${port:+:$port})"
+                notify "RECOVERED: $name" default white_check_mark "$name healthy again ($kind $target${port:+:$port})"
               fi
               rm -f "$f"; return
             fi
             fails=$((fails + 1))
             if [ "$fails" -ge "$FAILS_BEFORE_ALERT" ] && [ "$alerted" = 0 ]; then
-              notify "DOWN: $name" urgent rotating_light "$name unreachable from pve-1 for ${fails} checks ($kind $target${port:+:$port})"
+              notify "DOWN: $name" urgent rotating_light "$name failing from pve-1 for ${fails} checks ($kind $target${port:+:$port})"
               alerted=1
             fi
             echo "$fails $alerted" > "$f"

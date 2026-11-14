@@ -1,0 +1,10 @@
+org: personal
+project: homebase-infra
+repo: homebase-infra
+sync:
+    output_dir: docs/ai
+    files:
+        - current-state.md
+        - decisions.md
+        - architecture.md
+        - known-issues.md

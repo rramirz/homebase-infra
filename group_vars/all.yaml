@@ -1,6 +1,6 @@
 ---
 # Kubernetes
-k8s_major_minor: "v1.34"
+k8s_major_minor: "v1.35"
 k8s_apt_keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
 # iSCSI storage

@@ -1,0 +1,85 @@
+replicaCount: 1
+
+image:
+  repository: mattermost/mattermost-team-edition
+  tag: "12.1.0"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+namespace: mattermost
+
+service:
+  type: ClusterIP
+  port: 8065
+  containerPort: 8065
+
+persistence:
+  size: 10Gi
+  storageClass: ssd
+
+postgres:
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  port: 5432
+  database: mattermost
+  user: mmuser
+  existingSecret: mattermost-postgres
+  secretKey: password
+  storage:
+    size: 10Gi
+    storageClass: ssd
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+httpRoute:
+  enabled: true
+  annotations: {}
+  hostnames:
+    - mattermost.theramirez.casa
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+  # Mattermost clients hold long-lived WebSocket connections (/api/v4/websocket).
+  # "0s" disables the Gateway API request timeout so streams aren't cut.
+  timeouts:
+    request: 0s
+    backendRequest: 0s
+
+env:
+  TZ: America/New_York
+  MM_SERVICESETTINGS_SITEURL: https://mattermost.theramirez.casa
+  MM_SERVICESETTINGS_LISTENADDRESS: ":8065"
+  MM_SQLSETTINGS_DRIVERNAME: postgres
+  MM_LOGSETTINGS_CONSOLELEVEL: INFO
+  MM_PLUGINSETTINGS_ENABLEUPLOADS: "true"
+
+resources:
+  requests:
+    cpu: 150m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+podSecurityContext:
+  fsGroup: 2000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 2000
+  runAsGroup: 2000
+  allowPrivilegeEscalation: false
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

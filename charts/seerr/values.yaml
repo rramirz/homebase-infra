@@ -2,7 +2,51 @@ app-template:
   controllers:
     main:
       strategy: Recreate
+      initContainers:
+        settings-guard:
+          image:
+            repository: ghcr.io/seerr-team/seerr
+            tag: v3.4.1
+            pullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # Restore newest valid auto-backup if settings.json is missing/empty/uninitialized.
+              F=/app/config/settings.json; D=/app/config/backups/auto
+              if [ -s "$F" ] && grep -q '"initialized": true' "$F" && ! grep -q '"mediaServerType": 4' "$F"; then
+                echo "settings.json OK"; exit 0
+              fi
+              for B in $(ls -1t $D/settings-*.json 2>/dev/null); do
+                if grep -q '"initialized": true' "$B" && ! grep -q '"mediaServerType": 4' "$B"; then
+                  cp "$F" "$D/bad-$(date +%s).json" 2>/dev/null
+                  cp "$B" "$F" && echo "RESTORED $F from $B" && exit 0
+                fi
+              done
+              echo "no valid backup found; leaving as is"
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
       containers:
+        settings-backup:
+          image:
+            repository: ghcr.io/seerr-team/seerr
+            tag: v3.4.1
+            pullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              F=/app/config/settings.json; D=/app/config/backups/auto; mkdir -p $D
+              while true; do
+                sleep 3600
+                if [ -s "$F" ] && grep -q '"initialized": true' "$F" && ! grep -q '"mediaServerType": 4' "$F"; then
+                  cp "$F" "$D/settings-$(date +%Y%m%d-%H%M%S).json"
+                  ls -1t $D/settings-*.json | tail -n +25 | xargs -r rm -f
+                fi
+              done
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
         main:
           image:
             repository: ghcr.io/seerr-team/seerr

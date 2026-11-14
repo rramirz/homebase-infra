@@ -1,0 +1,18 @@
+# Helm values for release `hindsight` (namespace `hindsight`).
+# Chart: oci://ghcr.io/vectorize-io/charts/hindsight --version 1.2.0
+# Matches live release revision 4 (2026-11-13). Secret `hindsight-llm` (LLM API key) is created out-of-band; never commit it.
+api:
+  env:
+    HINDSIGHT_API_LLM_PROVIDER: openai
+    HINDSIGHT_API_LLM_BASE_URL: https://opencode.ai/inference/go/openai/v1
+    HINDSIGHT_API_LLM_MODEL: deepseek-v4.1-flash
+    HINDSIGHT_API_LLM_DEFAULT_HEADERS: '{"x-opencode-session":"hindsight-api","User-Agent":"hindsight-memory/1.0"}'
+    # Reranker: default local hs-rerank-1 took ~63s per recall on home-base CPU (300 candidates).
+    # flashrank TinyBERT + 100 candidates: rerank ~0.3s, recall ~1.8s.
+    HINDSIGHT_API_RERANKER_PROVIDER: flashrank
+    HINDSIGHT_API_RERANKER_FLASHRANK_MODEL: ms-marco-TinyBERT-L-2-v2
+    HINDSIGHT_API_RERANKER_MAX_CANDIDATES: "100"
+    HINDSIGHT_API_RERANKER_LOCAL_TIMEOUT: "20"
+existingSecret: hindsight-llm
+postgresql:
+  enabled: true

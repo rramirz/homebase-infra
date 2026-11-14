@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mattermost
+description: Mattermost Team Edition self-hosted messaging for homelab
+type: application
+version: 0.1.0
+appVersion: "12.1.0"

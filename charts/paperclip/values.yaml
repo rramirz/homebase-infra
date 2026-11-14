@@ -31,8 +31,8 @@ image:
   pullPolicy: IfNotPresent
   paperclip:
     repository: ghcr.io/paperclipai/paperclip
-    tag: sha-d554c47
-    digest: sha256:f203471a38603026aa861efef343c56a2785202f5f83da440a48f85e5a949a49
+    tag: sha-bba6a45
+    digest: sha256:bf78a4ad83f4aabf8c673e0c06c4a91f6185aaed28419d423365a535a8a4ee05
   postgres:
     repository: docker.io/library/postgres
     tag: 17-alpine

@@ -3,4 +3,4 @@ name: paperclip
 description: Reusable Paperclip (paperclipai) deployment for isolated home-cluster profiles
 type: application
 version: 0.1.0
-appVersion: "v2026.916.1"
+appVersion: "v2026.1012.0"

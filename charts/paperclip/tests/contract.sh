@@ -290,7 +290,7 @@ podspec = deploy.dig('spec', 'template', 'spec')
 assert(podspec['automountServiceAccountToken'] == false, 'automountServiceAccountToken false')
 assert(podspec.dig('securityContext', 'seccompProfile', 'type') == 'RuntimeDefault', 'seccomp RuntimeDefault')
 app = podspec['containers'].first
-assert(app['image'] == 'ghcr.io/paperclipai/paperclip:sha-d554c47@sha256:f203471a38603026aa861efef343c56a2785202f5f83da440a48f85e5a949a49', 'app image pinned')
+assert(app['image'] == 'ghcr.io/paperclipai/paperclip:sha-bba6a45@sha256:bf78a4ad83f4aabf8c673e0c06c4a91f6185aaed28419d423365a535a8a4ee05', 'app image pinned')
 assert(app.dig('securityContext', 'allowPrivilegeEscalation') == false, 'app allowPrivilegeEscalation false')
 assert(!app.dig('securityContext').key?('capabilities'), 'app must not drop capabilities')
 assert(app.dig('ports', 0, 'containerPort') == 3100, 'app containerPort 3100')

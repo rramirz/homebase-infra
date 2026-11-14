@@ -12,9 +12,8 @@
     mode: "0644"
 
 - name: Install Kubernetes GPG key
-  shell: gpg --dearmor -o {{ k8s_apt_keyring }} < /tmp/kubernetes-release.key
-  args:
-    creates: "{{ k8s_apt_keyring }}"
+  shell: gpg --dearmor --yes -o {{ k8s_apt_keyring }} < /tmp/kubernetes-release.key
+  changed_when: true
 
 - name: Add Kubernetes apt repository
   copy:
