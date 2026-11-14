@@ -1,0 +1,13 @@
+{% raw %}{{- if .Values.db.enabled }}
+apiVersion: theramirez.casa/v1alpha1
+kind: DB
+metadata:
+  name: {{ .Release.Name }}-db
+spec:
+  dbName: {{ include "app.dbName" . }}
+  psqlClusterName: {{ .Values.db.psqlClusterName }}
+  encoding: UTF8
+  lcCType: C
+  lcCollate: C
+{{- end }}
+{% endraw %}

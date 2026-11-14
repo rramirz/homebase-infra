@@ -1,0 +1,9 @@
+{
+  "app_name": "my-app",
+  "description": "Go app on home cluster",
+  "go_module": "github.com/rafaelramirez/{{ cookiecutter.app_name }}",
+  "hostname": "{{ cookiecutter.app_name }}.theramirez.casa",
+  "port": "8080",
+  "use_db": ["yes", "no"],
+  "registry": "registry.theramirez.casa"
+}

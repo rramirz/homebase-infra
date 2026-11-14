@@ -1,0 +1,22 @@
+image:
+  repository: {{ cookiecutter.registry }}/{{ cookiecutter.app_name }}
+  tag: latest
+  pullPolicy: IfNotPresent
+port: {{ cookiecutter.port }}
+replicas: 1
+resources:
+  requests: {cpu: 50m, memory: 64Mi}
+  limits: {memory: 256Mi}
+httpRoute:
+  enabled: true
+  hostnames: [{{ cookiecutter.hostname }}]
+  parentRefs:
+    - name: home
+      namespace: kgateway-system
+      sectionName: https
+  timeouts: {}
+db:
+  enabled: {{ 'true' if cookiecutter.use_db == 'yes' else 'false' }}
+  name: ""
+  psqlClusterName: home-db
+  host: home-db-rw.postgres.svc   # confirm namespace

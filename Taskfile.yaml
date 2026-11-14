@@ -29,6 +29,21 @@ tasks:
     cmds:
       - task --list
 
+  app:new:
+    desc: Scaffold a new Go app (Helm chart + Crossplane DB) into apps/<name>. Usage task app:new NAME=my-app [DB=yes|no]
+    requires:
+      vars: [NAME]
+    cmds:
+      - cookiecutter templates/go-app --no-input -o apps app_name={{.NAME}} use_db={{.DB | default "yes"}}
+
+  chart:new:
+    desc: Wrap a third-party app as an umbrella Helm chart in charts/<name> (cookiecutter-helm-template; interactive repo/version pick). Usage task chart:new NAME=gitea
+    requires:
+      vars: [NAME]
+    interactive: true
+    cmds:
+      - cookiecutter ~/homespace/cookiecutter-helm-template -o charts chart_name={{.NAME}}
+
   inventory:
     desc: Show Ansible inventory graph
     cmds:
@@ -623,6 +638,31 @@ tasks:
         msg: current kubectl context is not home-base - refusing to forward against the wrong cluster
     cmds:
       - kubectl -n {{.PAPERCLIP_NS}} port-forward svc/{{.PAPERCLIP_RELEASE}} 3100:3100
+
+  paperclip:ai-login:
+    desc: 'Interactive AI CLI login inside the Paperclip pod. Usage: task paperclip:ai-login CLI=claude|codex [LOGIN_ID=<uuid from Paperclip UI>]'
+    interactive: true
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "home-base" ]'
+        msg: current kubectl context is not home-base - refusing to run against the wrong cluster
+      - sh: '[ "{{.CLI}}" = "claude" ] || [ "{{.CLI}}" = "codex" ]'
+        msg: 'CLI must be claude or codex (e.g. task paperclip:ai-login CLI=claude LOGIN_ID=<uuid>)'
+      - sh: '[ -z "{{.LOGIN_ID}}" ] || echo "{{.LOGIN_ID}}" | grep -qE "^[0-9a-f-]{36}$"'
+        msg: LOGIN_ID must be a UUID
+    cmds:
+      - |
+        kubectl -n {{.PAPERCLIP_NS}} exec -it deploy/{{.PAPERCLIP_RELEASE}} -- sh -c '
+          CLI={{.CLI}}; LOGIN_ID={{.LOGIN_ID}}
+          if [ -n "$LOGIN_ID" ]; then
+            D=/paperclip/instances/default/ai-local-logins/$LOGIN_ID
+            mkdir -p "$D"
+            if [ "$CLI" = claude ]; then export CLAUDE_CONFIG_DIR="$D"; else export CODEX_HOME="$D"; fi
+          fi
+          if [ "$CLI" = claude ]; then claude auth login; else codex login --device-auth; fi
+          rc=$?
+          # exec runs as root but the Paperclip server runs as node (1000): hand over the creds
+          [ -n "$LOGIN_ID" ] && chown -R 1000:1000 "$D"
+          exit $rc'
 
   paperclip:verify:
     desc: Verify the live personal Paperclip release read-only (no mutation)

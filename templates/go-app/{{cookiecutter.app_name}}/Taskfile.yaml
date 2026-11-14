@@ -1,0 +1,37 @@
+version: '3'
+vars:
+  APP: {{ cookiecutter.app_name }}
+  IMAGE: {{ cookiecutter.registry }}/{{ cookiecutter.app_name }}
+  TAG:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo dev
+tasks:
+  test:
+    cmds: [go test -race ./...]
+  vet:
+    cmds: [go vet ./...]
+  run:
+    cmds: [go run ./cmd/server]
+  verify:
+    desc: fmt, vet, test, helm lint + render
+    cmds:
+      - test -z "$(gofmt -l .)"
+      - go vet ./...
+      - go test -race ./...
+      - helm lint chart
+      - helm template {{ '{{.APP}}' }} chart -n {{ '{{.APP}}' }} >/dev/null
+  image:
+    desc: Build amd64 image (cluster is amd64)
+    cmds:
+      - docker build --platform linux/amd64 -t {{ '{{.IMAGE}}:{{.TAG}}' }} .
+  push:
+    deps: [image]
+    cmds:
+      - docker push {{ '{{.IMAGE}}:{{.TAG}}' }}
+  dry-run:
+    desc: Helm server-side dry run
+    cmds:
+      - helm upgrade --install {{ '{{.APP}}' }} chart -n {{ '{{.APP}}' }} --create-namespace --set image.tag={{ '{{.TAG}}' }} --dry-run
+  deploy:
+    desc: Helm upgrade --install (run dry-run first)
+    cmds:
+      - helm upgrade --install {{ '{{.APP}}' }} chart -n {{ '{{.APP}}' }} --create-namespace --set image.tag={{ '{{.TAG}}' }}
